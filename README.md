@@ -20,6 +20,15 @@ She sits on your windows, talks back, plays your games and gets into everything.
 
 </div>
 
+> [!WARNING]
+> **This is a fork: [tuno473/capri-desktop](https://github.com/tuno473/capri-desktop).** The official Capri is [lachydotmcg/capri-desktop](https://github.com/lachydotmcg/capri-desktop).
+>
+> It follows Capri **0.7.8** and stays as close to it as it can. On Linux it adds:
+> - Her own cursor for mouse and keyboard jobs, like Windows. Her artist's cursor glides to each target while your mouse stays where you left it, and she only borrows the real cursor for the instant of a click.
+> - Settings that survive opening Capri **0.7.6** or **0.7.7** and coming back. Those versions drop the voice and brain-server settings that 0.7.8 added. This fork keeps a copy in `cross-new.json` and restores them.
+>
+> **It has only been tested on CachyOS with KDE Plasma 6 on Wayland**, with an NVIDIA RTX 3050 Laptop. Hyprland 0.57 was only tried nested inside KDE. It has not been tested on Manjaro, GNOME, Sway, X11, other distros or other compositors, or on Mac or Windows. It may not work as well, or at all, there. If something breaks, please say which system and desktop you're on.
+
 <table align="center">
   <tr>
     <td align="center"><img src="assets/readme/idle.webp" alt="Capri idling and blinking" width="140"><br><sub>Hanging out</sub></td>
