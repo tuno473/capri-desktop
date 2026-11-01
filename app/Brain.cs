@@ -296,14 +296,15 @@ namespace CapriDesktop
         internal Cloud(int port, string model, string address = null) { Host = Brain.LocalAddress(address) ?? Brain.LocalHost(port); Port = new Uri(Host).Port; Kind = "local"; Model = model; }
         internal bool Claude { get { return Kind == "anthropic"; } }
         internal string Name { get { return Kind == "local" ? Brain.ServerName(Port) : Kind == "anthropic" ? "Claude" : Kind == "google" ? "Gemini" : Kind == "openai" ? "ChatGPT" : Company; } }
-        internal string Company { get { return Kind == "local" ? Name : CompanyOf(Kind); } }
+        internal string Company { get { return Kind == "local" ? Name : Kind == "custom" ? Brain.EndpointName(Key) : CompanyOf(Kind); } }
         internal static string CompanyOf(string kind) { return kind == "anthropic" ? "Anthropic" : kind == "deepseek" ? "DeepSeek" : kind == "nvidia" ? "NVIDIA" : kind == "google" ? "Google AI" : kind == "openrouter" ? "OpenRouter" : kind == "kilo" ? "Kilo Code" : kind == "openai" ? "OpenAI" : "That provider"; }
         internal string Source { get { return Kind + (Kind == "local" ? "|" + Host : "") + "|" + Model; } }
-        internal string Sight { get { return Kind == "local" || Kind == "google" || Brain.Routed(Kind) ? Source : Model; } }
+        internal string Sight { get { return Kind == "local" || Kind == "google" || Kind == "custom" || Brain.Routed(Kind) ? Source : Model; } }
 
         internal static string KindOf(string key)
         {
             if (string.IsNullOrEmpty(key)) return null;
+            if (key.StartsWith(Brain.EndpointMark, StringComparison.Ordinal)) return "custom";
             if (key.StartsWith("AIza", StringComparison.Ordinal)) return "google";
             if (key.StartsWith("sk-or-", StringComparison.Ordinal)) return "openrouter";
             // Kilo Code's keys have no prefix of their own: Brain > Use a Kilo Code key marks them, and its JWTs are taken too.
@@ -347,6 +348,45 @@ namespace CapriDesktop
         internal static string Kilo = "https://ai-gateway.kilo.ai/api/v1";
         internal const string KiloMark = "kilo:";
         internal const string KiloFree = "kilo-auto/free";
+        // Any other OpenAI-style endpoint: its URL and key are kept together, as endpoint:URL|KEY, so a key only ever goes to its own URL.
+        internal const string EndpointMark = "endpoint:";
+
+        // An endpoint as typed, up to its version: https:// unless it's on this PC or network, /v1 when it has no path, and
+        // never /chat/completions or /models on the end. Null when it isn't a web address.
+        internal static string EndpointUrl(string typed)
+        {
+            string url = (typed ?? "").Trim().TrimEnd('/');
+            if (url.Length == 0 || url.IndexOf('|') >= 0) return null;
+            if (!Regex.IsMatch(url, "^[a-z][a-z0-9+.-]*://", RegexOptions.IgnoreCase)) url = (Regex.IsMatch(url, @"^(localhost|127\.|10\.|192\.168\.|\[::1\])|\.(local|lan|home|internal)(:|/|$)", RegexOptions.IgnoreCase) ? "http://" : "https://") + url;
+            url = Regex.Replace(url, @"/(chat/completions|completions|models)$", "", RegexOptions.IgnoreCase);
+            Uri parsed;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out parsed) || (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps) || parsed.Host.Length == 0) return null;
+            return parsed.AbsolutePath.Trim('/').Length == 0 ? url + "/v1" : url;
+        }
+
+        internal static string EndpointKey(string url, string key) { return EndpointMark + url + "|" + (key ?? "").Trim(); }
+
+        private static string EndpointOf(string key)
+        {
+            string rest = key.Substring(EndpointMark.Length);
+            int bar = rest.IndexOf('|');
+            return bar < 0 ? rest : rest.Substring(0, bar);
+        }
+
+        internal static string EndpointName(string key)
+        {
+            Uri parsed;
+            return Uri.TryCreate(EndpointOf(key ?? EndpointMark), UriKind.Absolute, out parsed) ? parsed.Host : "That endpoint";
+        }
+
+        // What goes in the Authorization header: the key without any mark Capri keeps it under.
+        internal static string Token(string key)
+        {
+            if (key.StartsWith(KiloMark, StringComparison.Ordinal)) return key.Substring(KiloMark.Length);
+            if (!key.StartsWith(EndpointMark, StringComparison.Ordinal)) return key;
+            int bar = key.IndexOf('|');
+            return bar < 0 ? "" : key.Substring(bar + 1);
+        }
 
         // Kilo Code's gateway lists the same models as OpenRouter, with free ones, pictures and tools marked the same way.
         internal static bool Routed(string kind) { return kind == "openrouter" || kind == "kilo"; }
@@ -1333,7 +1373,7 @@ namespace CapriDesktop
         {
             string kind = Cloud.KindOf(key);
             bool claude = kind == "anthropic";
-            HttpWebRequest request = Create(Address(kind, "/models") + (claude ? "?limit=100" : ""), 30000);
+            HttpWebRequest request = Create((kind == "custom" ? EndpointOf(key) + "/models" : Address(kind, "/models")) + (claude ? "?limit=100" : ""), 30000);
             Sign(request, key, claude);
             try
             {
@@ -1369,7 +1409,7 @@ namespace CapriDesktop
             List<CloudModel> found = new List<CloudModel>();
             foreach (CloudModel model in page.Models)
             {
-                if (model == null || string.IsNullOrWhiteSpace(model.Id) || !Chats(kind, model.Id) || found.Exists(knownModel => knownModel.Id == model.Id)) continue;
+                if (model == null || string.IsNullOrWhiteSpace(model.Id) || (kind == "custom" && Regex.IsMatch(model.Id, @"embed|rerank|moderation|whisper|tts|transcri|dall-e", RegexOptions.IgnoreCase)) || !Chats(kind, model.Id) || found.Exists(knownModel => knownModel.Id == model.Id)) continue;
                 if (kind == "nvidia" && Array.IndexOf(NvidiaDead, model.Id) >= 0) continue;
                 if (Routed(kind) && model.Architecture != null && model.Architecture.Input != null && Array.IndexOf(model.Architecture.Input, "text") < 0) continue;
                 if (Routed(kind) && model.Architecture != null && model.Architecture.Output != null && Array.IndexOf(model.Architecture.Output, "text") < 0) continue;
@@ -1488,7 +1528,8 @@ namespace CapriDesktop
         {
             request.AllowAutoRedirect = false;
             if (Routed(Cloud.KindOf(key))) request.Headers["X-Title"] = "Capri";
-            if (key.StartsWith(KiloMark, StringComparison.Ordinal)) key = key.Substring(KiloMark.Length);
+            key = Token(key);
+            if (key.Length == 0) return;
             if (!claude) { request.Headers["Authorization"] = "Bearer " + key; return; }
             request.Headers["x-api-key"] = key;
             request.Headers["anthropic-version"] = "2026-10-21";
@@ -2054,7 +2095,7 @@ namespace CapriDesktop
                     Template = brief ? new CloudTemplate() : null,
                     Stream = (screen || remote.Kind == "local") && unstreamed != remote.Source
                 };
-                string address = remote.Kind == "local" ? remote.Host + "/v1/chat/completions" : Address(remote.Kind, "/chat/completions");
+                string address = remote.Kind == "local" ? remote.Host + "/v1/chat/completions" : remote.Kind == "custom" ? EndpointOf(remote.Key) + "/chat/completions" : Address(remote.Kind, "/chat/completions");
                 Action<HttpWebRequest> sign = remote.Kind == "local" ? null : new Action<HttpWebRequest>(delegate(HttpWebRequest request) { Sign(request, remote.Key, false); });
                 int wait = remote.Kind == "local" || screen ? Math.Max(180000, CloudWait) : CloudWait;
                 CompletionReply reply;

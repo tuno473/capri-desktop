@@ -292,6 +292,9 @@ namespace CapriDesktop
                 LocalVoiceChecks();
                 BrainServerChecks();
                 KiloChecks();
+                EndpointChecks();
+                LayaChecks();
+                FrameChecks();
                 ChoresChecks();
                 bool loginNew = !pet.StartsAtLogin;
                 pet.SetLogin(true);
@@ -594,10 +597,10 @@ namespace CapriDesktop
                 bool cloudGone = pet.Brain.Remote == null && pet.Saved.CloudModel == null && !File.Exists(Path.Combine(folder, "brain-key"));
                 pet.Brain.Model = "qwen3:8b";
                 pet.Talk.Dismiss();
-                if (ollamaMenu != "*qwen3:8b | - | Download a model (Ollama or Hugging Face)... | Use my own server (OpenAI API)... | - | Get a free NVIDIA key | " + Pet.KeyChoice + " | " + Pet.KiloChoice) throw new Exception("The Brain menu didn't offer a cloud key: " + ollamaMenu);
+                if (ollamaMenu != "*qwen3:8b | - | Download a model (Ollama or Hugging Face)... | - | Get a free NVIDIA key | " + Pet.KeyChoice + " | " + Pet.KiloChoice + " | " + Pet.EndpointChoice + " | - | Hands: her brain...") throw new Exception("The Brain menu didn't offer a cloud key: " + ollamaMenu);
                 if (freeKey != Pet.FreeKeySteps || !keyAsked || notKey != Pet.NotAKey || !keyHidden) throw new Exception("The key choices didn't say where to paste, ask in a hidden box or explain a bad key: " + freeKey + " | " + keyAsked + " | " + notKey + " | " + keyHidden);
-                if (cloudMenu != "NVIDIA key ending 1234 (off) | *meta/llama-3.3-70b-instruct | qwen/qwen3-235b-a22b | - | Stay on my model | Forget the key and use Ollama" || !cloudPicked || !cloudGone || !cloudDetails || !hopped || !hopsEnd
-                    || nvidiaMenu != "NVIDIA key ending 1234 (off) | *nvidia/nemotron-3.5-super-vl-120b-a12b · recommended | nvidia/nemotron-3.5-bolt-e4b | openai/gpt-oss-20b | - | *Stay on my model | Forget the key and use Ollama")
+                if (cloudMenu != "NVIDIA key ending 1234 (off) | *meta/llama-3.3-70b-instruct | qwen/qwen3-235b-a22b | - | Stay on my model | Forget the key and use Ollama | - | Hands: her brain..." || !cloudPicked || !cloudGone || !cloudDetails || !hopped || !hopsEnd
+                    || nvidiaMenu != "NVIDIA key ending 1234 (off) | *nvidia/nemotron-3.5-super-vl-120b-a12b · recommended | nvidia/nemotron-3.5-bolt-e4b | openai/gpt-oss-20b | - | *Stay on my model | Forget the key and use Ollama | - | Hands: her brain...")
                     throw new Exception("The cloud key's Brain menu went wrong: " + cloudMenu + " | " + cloudPicked + " | " + cloudGone + " | " + cloudDetails + " | " + hopped + " | " + hopsEnd + " | " + nvidiaMenu);
                 checks.Add("PASS cloud brain: Brain offers a free NVIDIA key or any API key in a hidden box, explains one that isn't a key, lists a key's models to pick from with Nemotron Super and Nemotron's reasoning model marked recommended, and Forget goes back to Ollama");
                 // Updates: a newer finished release puts Get Capri X in her menu and she mentions it once; older releases, drafts and odd tags don't.
@@ -778,6 +781,9 @@ namespace CapriDesktop
                 Snap(pet.Talk.Face, "talk.png");
                 Snap(pet.Talk.Typer.Content as Control, "typer.png");
                 Snap(pet.Talk.Pill.Content as Control, "pill.png");
+                Frame panel = pet.ShowFrame();
+                Snap(panel.Content as Control, "mainframe.png");
+                panel.Hide();
                 Scene("desktop.png", new Window[] { pet, bubble, pet.Talk.Pill }, new PixelRect[0]);
                 string pillLook = PillFace.Check(Path.Combine(folder, "pill-states.png"));
                 if (pillLook != null) throw new Exception(pillLook);
@@ -1834,6 +1840,185 @@ namespace CapriDesktop
             checks.Add("PASS Kilo Code keys: Brain > Use a Kilo Code key marks the key (and a JWT in the usual box is taken too), it goes to Kilo's gateway as a bearer token without the mark, a one-token reply from kilo-auto/free checks it since the model list is open, a turned-down key is said plainly, and its models are picked like OpenRouter's");
         }
 
+        // A small JSON server for checks: it hands each request's method and path, headers and body to the answer, which gives a status and a body.
+        private static TcpListener FakeJson(Func<string, string, string, KeyValuePair<int, string>> answer)
+        {
+            TcpListener server = new TcpListener(IPAddress.Loopback, 0);
+            server.Start();
+            Thread serve = new Thread(delegate()
+            {
+                while (true)
+                {
+                    TcpClient client;
+                    try { client = server.AcceptTcpClient(); }
+                    catch (Exception) { return; }
+                    try
+                    {
+                        using (client)
+                        {
+                            NetworkStream stream = client.GetStream();
+                            List<byte> read = new List<byte>();
+                            byte[] chunk = new byte[65536];
+                            int end = -1, length = 0;
+                            while (end < 0)
+                            {
+                                int got = stream.Read(chunk, 0, chunk.Length);
+                                if (got <= 0) break;
+                                for (int i = 0; i < got; i++) read.Add(chunk[i]);
+                                for (int i = 3; i < read.Count && end < 0; i++) if (read[i - 3] == 13 && read[i - 2] == 10 && read[i - 1] == 13 && read[i] == 10) end = i + 1;
+                            }
+                            if (end < 0) continue;
+                            string head = Encoding.ASCII.GetString(read.ToArray(), 0, end);
+                            System.Text.RegularExpressions.Match sized = System.Text.RegularExpressions.Regex.Match(head, @"Content-Length:\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            if (sized.Success) length = int.Parse(sized.Groups[1].Value);
+                            while (read.Count - end < length)
+                            {
+                                int got = stream.Read(chunk, 0, chunk.Length);
+                                if (got <= 0) break;
+                                for (int i = 0; i < got; i++) read.Add(chunk[i]);
+                            }
+                            string[] first = head.Split(' ');
+                            KeyValuePair<int, string> reply = answer(first[0] + " " + first[1], head, Encoding.UTF8.GetString(read.ToArray(), end, read.Count - end));
+                            byte[] bytes = Encoding.UTF8.GetBytes(reply.Value);
+                            byte[] top = Encoding.ASCII.GetBytes("HTTP/1.1 " + reply.Key + " X\r\nContent-Type: application/json\r\nContent-Length: " + bytes.Length + "\r\nConnection: close\r\n\r\n");
+                            stream.Write(top, 0, top.Length);
+                            stream.Write(bytes, 0, bytes.Length);
+                        }
+                    }
+                    catch (Exception) { }
+                }
+            });
+            serve.IsBackground = true;
+            serve.Start();
+            return server;
+        }
+
+        // Any OpenAI-style endpoint by its URL and then its key: the URL as typed, the key only to that URL and without its
+        // mark, none at all when it takes none, its chat models listed, and a chat through it.
+        private void EndpointChecks()
+        {
+            List<string> wrong = new List<string>();
+            Func<string, bool, string> fail = delegate(string what, bool ok) { if (!ok) wrong.Add(what); return what; };
+            fail("URLs", Brain.EndpointUrl("https://api.groq.com/openai/v1/") == "https://api.groq.com/openai/v1" && Brain.EndpointUrl("api.example.com") == "https://api.example.com/v1" && Brain.EndpointUrl("localhost:8080") == "http://localhost:8080/v1"
+                && Brain.EndpointUrl("192.168.1.9:8000/v1/chat/completions") == "http://192.168.1.9:8000/v1" && Brain.EndpointUrl("https://x.ai/v1/models") == "https://x.ai/v1" && Brain.EndpointUrl("ftp://x") == null && Brain.EndpointUrl(" ") == null);
+            string saved = Brain.EndpointKey("https://api.example.com/v1", " sk-secret ");
+            fail("its key", saved == "endpoint:https://api.example.com/v1|sk-secret" && Cloud.KindOf(saved) == "custom" && Brain.Token(saved) == "sk-secret" && Brain.Token(Brain.EndpointKey("http://h/v1", "")) == "" && new Cloud(saved, "m").Company == "api.example.com" && Brain.Token("nvapi-x") == "nvapi-x");
+            List<string> heard = new List<string>();
+            TcpListener server = FakeJson(delegate(string asked, string head, string body)
+            {
+                bool bearer = head.IndexOf("Authorization: Bearer good-key", StringComparison.OrdinalIgnoreCase) >= 0;
+                lock (heard) heard.Add(asked + (head.IndexOf("Authorization", StringComparison.OrdinalIgnoreCase) >= 0 ? " keyed " : " open ") + body);
+                if (!bearer && asked.IndexOf("/open/", StringComparison.Ordinal) < 0) return new KeyValuePair<int, string>(401, "{\"error\":{\"message\":\"bad key\"}}");
+                if (asked.EndsWith("/models", StringComparison.Ordinal)) return new KeyValuePair<int, string>(200, "{\"data\":[{\"id\":\"text-embedding-3\"},{\"id\":\"their/model\"}]}");
+                return new KeyValuePair<int, string>(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Endpoint says hi, choom.\"},\"finish_reason\":\"stop\"}]}");
+            });
+            string url = "http://127.0.0.1:" + ((IPEndPoint)server.LocalEndpoint).Port;
+            List<string> models = Brain.CloudModels(Brain.EndpointKey(url + "/api/v1", "good-key"));
+            fail("its models", models.Count == 1 && models[0] == "their/model" && Brain.DefaultCloudModel("custom", models) == "their/model");
+            int turned = 0;
+            try { Brain.CloudModels(Brain.EndpointKey(url + "/api/v1", "bad-key")); }
+            catch (BrainException error) { turned = error.Status; }
+            fail("a key turned down", turned == 401);
+            fail("no key means no header", Brain.CloudModels(Brain.EndpointKey(url + "/open/v1", "")).Count == 1 && heard[heard.Count - 1].IndexOf("GET /open/v1/models open", StringComparison.Ordinal) == 0);
+            string said;
+            try { said = new Brain { Remote = new Cloud(Brain.EndpointKey(url + "/api/v1", "good-key"), "their/model"), Model = "their/model" }.Ask("hi there"); }
+            catch (Exception error) { said = "threw " + error.Message; }
+            string chat;
+            lock (heard) chat = heard.Find(delegate(string line) { return line.StartsWith("POST /api/v1/chat/completions keyed", StringComparison.Ordinal); }) ?? "";
+            fail("a chat through it", said.IndexOf("Endpoint says hi", StringComparison.Ordinal) >= 0 && chat.IndexOf("their\\/model", StringComparison.Ordinal) > 0);
+            server.Stop();
+            if (wrong.Count > 0) throw new Exception("Endpoints went wrong: " + string.Join(", ", wrong) + " / " + turned + " / " + said + " / " + chat + " / " + string.Join(",", models.ToArray()));
+            checks.Add("PASS endpoints: Brain > Use another endpoint takes any OpenAI-style URL and then its key, sends the key only there and only when there is one, lists its chat models, says when it turns the key down, and chats through it");
+        }
+
+        // Laya as her hands: her brain's order and the steps it offers go to Laya, which picks one; a step it can't have been
+        // offered never runs, and when it can't answer her brain's first step goes ahead.
+        private void LayaChecks()
+        {
+            List<string> wrong = new List<string>();
+            Func<string, bool, string> fail = delegate(string what, bool ok) { if (!ok) wrong.Add(what); return what; };
+            fail("addresses", Laya.Clean("127.0.0.1:8890/") == "http://127.0.0.1:8890" && Laya.Clean("http://box.lan:8000/v1/systemone") == "http://box.lan:8000" && Laya.Clean("ftp://x") == null && Laya.Clean(" ") == null);
+            string question = Laya.Question("send hola", "click the \"box\"", new List<string> { "1. opened it" }, new List<string> { "the box", "the gear" });
+            using (System.Text.Json.JsonDocument read = System.Text.Json.JsonDocument.Parse(question))
+            {
+                System.Text.Json.JsonElement step = read.RootElement.GetProperty("questions").GetProperty("step");
+                fail("its question", read.RootElement.GetProperty("state").GetProperty("order").GetString() == "click the \"box\"" && step.GetProperty("type").GetString() == "choice" && step.GetProperty("criteria").GetProperty("b").GetString() == "the gear");
+            }
+            string answer = "b";
+            List<string> asked = new List<string>();
+            TcpListener server = FakeJson(delegate(string where, string head, string body)
+            {
+                lock (asked) asked.Add(where + " " + body);
+                if (where.StartsWith("GET", StringComparison.Ordinal)) return new KeyValuePair<int, string>(200, "{}");
+                if (answer == "broken") return new KeyValuePair<int, string>(500, "{}");
+                return new KeyValuePair<int, string>(200, "{\"answers\":{\"step\":{\"type\":\"choice\",\"choice\":\"" + answer + "\"}}}");
+            });
+            string url = "http://127.0.0.1:" + ((IPEndPoint)server.LocalEndpoint).Port;
+            fail("it answers", Laya.Answers(url) && !Laya.Answers("http://127.0.0.1:9"));
+            System.Text.Json.JsonElement order;
+            string offer = "{\"order\":\"click the box\",\"options\":[{\"do\":\"click\",\"x\":1,\"y\":1,\"what\":\"the gear\"},{\"do\":\"click\",\"x\":2,\"y\":2,\"what\":\"the box\"}]}";
+            fail("an offer reads", Chores.Read("Sure: " + offer, out order));
+            string spoken;
+            System.Text.Json.JsonElement picked = Chores.Chosen(order, url, "job", new List<string>(), out spoken);
+            fail("it picks", picked.GetProperty("x").GetInt32() == 2 && spoken == "click the box");
+            answer = "z";
+            fail("off the list", Chores.Chosen(order, url, "job", new List<string>(), out spoken).GetProperty("x").GetInt32() == 1);
+            answer = "broken";
+            fail("it fails", Chores.Chosen(order, url, "job", new List<string>(), out spoken).GetProperty("x").GetInt32() == 1);
+            fail("it's down", Chores.Chosen(order, "http://127.0.0.1:9", "job", new List<string>(), out spoken).GetProperty("x").GetInt32() == 1);
+            fail("it's off", Chores.Chosen(order, null, "job", new List<string>(), out spoken).GetProperty("x").GetInt32() == 1);
+            answer = "b";
+            int brainAsked = 0;
+            TcpListener brainServer = FakeJson(delegate(string where, string head, string body)
+            {
+                string said = System.Threading.Interlocked.Increment(ref brainAsked) == 1 ? offer : "{\"do\":\"done\",\"said\":\"Clicked it.\"}";
+                return new KeyValuePair<int, string>(200, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":" + Voice.Quote(said) + "},\"finish_reason\":\"stop\"}]}");
+            });
+            byte[] picture;
+            using (SkiaSharp.SKBitmap blank = new SkiaSharp.SKBitmap(640, 360))
+            using (SkiaSharp.SKImage image = SkiaSharp.SKImage.FromBitmap(blank))
+            using (SkiaSharp.SKData data = image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100)) picture = data.ToArray();
+            List<string> done = new List<string>();
+            Func<byte[]> shootWas = Chores.Shoot;
+            string urlWas = Laya.Url;
+            Chores.Shoot = delegate { return picture; };
+            Chores.Doing = delegate(string what, System.Text.Json.JsonElement step) { done.Add(what + " " + step.GetProperty("x").GetRawText()); };
+            Laya.Url = url;
+            string result;
+            try { result = Chores.Run(new Brain { Server = "http://127.0.0.1:" + ((IPEndPoint)brainServer.LocalEndpoint).Port, Model = "eyes" }, "click the box", null); }
+            finally
+            {
+                Chores.Doing = null;
+                Chores.Shoot = shootWas;
+                Laya.Url = urlWas;
+                server.Stop();
+                brainServer.Stop();
+            }
+            fail("a job through it", result == "Did it. Clicked it." && done.Count == 1 && done[0] == "click 2");
+            if (wrong.Count > 0) throw new Exception("Laya went wrong: " + string.Join(", ", wrong) + " / " + result + " / " + string.Join(" | ", done.ToArray()));
+            checks.Add("PASS Laya as her hands: her brain gives an order and offers steps, Laya picks one, Capri does that one; it can only pick what was offered, and when it's off, down or wrong her brain's first step goes ahead");
+        }
+
+        // Capri Mainframe on Mac and Linux: it opens, reads her settings back, and a change from the menu shows in it.
+        private void FrameChecks()
+        {
+            int volumeWas = Voice.Loudness;
+            Frame panel = pet.ShowFrame();
+            string now = pet.BrainNow;
+            pet.SetVolume(50);
+            panel.Refresh();
+            bool shown = panel.IsVisible && panel.Title == "Capri Mainframe" && now.Length > 0;
+            pet.SetVolume(volumeWas);
+            string language = pet.Saved.Language;
+            pet.PickModel("frame-test-model");
+            bool picked = pet.Brain.Model == "frame-test-model";
+            pet.Brain.Model = null;
+            pet.Saved.Model = null;
+            pet.Saved.Language = language;
+            if (!shown || !picked) throw new Exception("Capri Mainframe went wrong: shown " + shown + ", picked " + picked + ", " + now);
+            checks.Add("PASS Capri Mainframe: right-click > Capri Mainframe opens Windows' panel on Mac and Linux, with her brain, hands, voice, moves, watching, habits and Security, all the same settings as her menu");
+        }
+
         private void ServeSpeech(NetworkStream stream)
         {
             List<byte> read = new List<byte>();
@@ -2143,7 +2328,8 @@ namespace CapriDesktop
             if (pet.Leaving || pet.Arriving || pet.Falling) return false;
             pet.MouseAt = null;
             string said = string.Join(" / ", moveLines);
-            string wanted = "Teleporting to your mouse. / Sitting right here. / Already sitting. / Standing up. / Hanging right here. / Let go. / Riding your cursor is only on Windows so far. / My Mainframe is only on Windows so far. Here my settings are in my right-click menu."
+            string mainframeSaid = pet.Screens.All.Count > 1 ? "Moved my Mainframe." : "It's open, but there's only the one screen to put it on.";
+            string wanted = "Teleporting to your mouse. / Sitting right here. / Already sitting. / Standing up. / Hanging right here. / Let go. / Riding your cursor is only on Windows so far. / " + mainframeSaid + ""
                 + " / Glitched. / Grinning. / Blinked. / Dancing. Tell me to stop when you've had enough. / Stopped dancing. / I wasn't dancing. / Back to my idle. / " + moveLines[15] + " / Hiding. Pick Show her in my tray menu to bring me back. / Back. / I'm right here.";
             if (said != wanted) throw new Exception("Her moves said the wrong things: " + said);
             checks.Add("PASS she moves herself: \"teleport here\" glitches her hip onto the mouse, she sits, stands, hangs and lets go where she is, goes to another screen " + (pet.Screens.All.Count > 1 ? "and lands there" : "only when there is one (one here)") + ", a hide waits for her line and \"show yourself\" brings her back, riding the cursor and the Mainframe say they're Windows-only so far, and glitch, grin, blink, idle and a dance until \"stop dancing\" play by name");

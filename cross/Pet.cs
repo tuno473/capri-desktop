@@ -72,6 +72,8 @@ namespace CapriDesktop
         // A server of their own that thinks for her instead of Ollama (llama-server, LM Studio, vLLM, TGI), and its model.
         [DataMember] internal string BrainServer;
         [DataMember] internal string ServerModel;
+        // Where Laya answers when it's her hands: her brain gives the orders and Laya picks the action. Null when it's off.
+        [DataMember] internal string HandsUrl;
     }
 
     // The bits of GitHub's latest release she reads to tell them about an update.
@@ -172,10 +174,10 @@ namespace CapriDesktop
         private const double StandY = 0.99;
         private static readonly double[] WanderPaces = { 3, 1, 0.45, 0.18 };
         internal static readonly string[] WanderNames = { "Off", "Rarely", "Sometimes", "Often", "Restless" };
-        private static readonly string[] Lengths = { "Short", "Medium", "Long" };
+        internal static readonly string[] Lengths = { "Short", "Medium", "Long" };
         private static readonly int[] Recalls = { 8, 16, 32 };
-        private static readonly string[] SoundNames = { "Off", "Quiet", "Normal", "Loud" };
-        private static readonly int[] SoundLevels = { 0, 30, 60, 100 };
+        internal static readonly string[] SoundNames = { "Off", "Quiet", "Normal", "Loud" };
+        internal static readonly int[] SoundLevels = { 0, 30, 60, 100 };
         internal const string Offline = "My brain's offline. Install Ollama from ollama.com and open it, then right-click me > Brain > Download " + Starter + ".";
         // The brain she downloads for herself through Ollama when it has none yet, so no terminal is needed.
         internal const string Starter = "gemma4:e4b";
@@ -184,6 +186,8 @@ namespace CapriDesktop
         private const string FreeKeyPage = "https://build.nvidia.com/settings/api-keys";
         internal const string KeyChoice = "Use an API key...";
         internal const string KiloChoice = "Use a Kilo Code key...";
+        internal const string EndpointChoice = "Use another endpoint (URL, then key)...";
+        private const string EndpointHeard = "(brain endpoint)";
         internal const string NotAKey = "That doesn't look like an NVIDIA, OpenAI, Claude or DeepSeek key. NVIDIA's start with nvapi-.";
         internal const string FreeKeySteps = "Make a key on NVIDIA's page and copy it. Then right-click me > Brain > " + KeyChoice + " and paste it.";
         internal const string DiscordPage = "https://discord.gg/F4fDHfGtFk";
@@ -192,7 +196,7 @@ namespace CapriDesktop
         private const string LatestRelease = "https://api.github.com/repos/lachydotmcg/capri-desktop/releases/latest";
         private const string ReleasesPage = "https://github.com/lachydotmcg/capri-desktop/releases/latest";
         internal static readonly double[] Sizes = { 140, 170, 240, 320, 440, 560 };
-        private static readonly string[] SizeNames = { "Tiny", "Small", "Medium", "Large", "Huge", "Giant" };
+        internal static readonly string[] SizeNames = { "Tiny", "Small", "Medium", "Large", "Huge", "Giant" };
         internal readonly Brain Brain = new Brain();
         internal readonly Talk Talk;
         internal Desk Desk = Desk.Make();
@@ -514,6 +518,7 @@ namespace CapriDesktop
                 Brain.Model = Saved.CloudModel;
             }
             Brain.Server = Brain.ServerAddress(Saved.BrainServer);
+            Laya.Url = Laya.Clean(Saved.HandsUrl);
             if (Brain.Remote == null && Brain.Server != null && !string.IsNullOrEmpty(Saved.ServerModel)) Brain.Model = Saved.ServerModel;
             voice.Key = ReadVoiceKey();
             voice.VoiceId = string.IsNullOrEmpty(Saved.VoiceId) ? null : Saved.VoiceId;
@@ -1703,6 +1708,9 @@ namespace CapriDesktop
             menu.Items.Add(napItem);
             menu.Items.Add(move);
             menu.Items.Add(sizes);
+            MenuItem mainframe = new MenuItem { Header = "Capri Mainframe" };
+            mainframe.Click += delegate { ShowFrame(); };
+            menu.Items.Add(mainframe);
             menu.Items.Add(brainMenu);
             menu.Items.Add(settings);
             menu.Items.Add(help);
@@ -1716,6 +1724,7 @@ namespace CapriDesktop
         private void Sync()
         {
             if (danceItem == null) return;
+            if (frame != null && frame.IsVisible) frame.Refresh();
             for (int i = 0; i < wanderPicks.Count; i++) wanderPicks[i].IsChecked = i == Saved.Wander;
             danceItem.IsChecked = dancing;
             musicItem.IsChecked = !Saved.NoDance;
@@ -2019,12 +2028,68 @@ namespace CapriDesktop
 
         internal bool Napping { get { return napping; } }
 
+        // Capri Mainframe, her panel of settings like on Windows. It opens in the middle of the screen she's on.
+        private Frame frame;
+
+        internal Frame ShowFrame()
+        {
+            if (frame == null) frame = new Frame(this);
+            bool opening = !frame.IsVisible;
+            frame.Show();
+            frame.Activate();
+            frame.Refresh();
+            if (opening) PlaceFrame(Screens.ScreenFromPoint(anchor) ?? Screens.Primary);
+            return frame;
+        }
+
+        private void PlaceFrame(Screen screen)
+        {
+            if (screen == null || frame == null) return;
+            double scale = screen.Scaling > 0 ? screen.Scaling : 1;
+            int wide = (int)(frame.Width * scale), tall = (int)(frame.Height * scale);
+            frame.Position = new PixelPoint(screen.WorkingArea.X + Math.Max(0, (screen.WorkingArea.Width - wide) / 2), screen.WorkingArea.Y + Math.Max(0, (screen.WorkingArea.Height - tall) / 2));
+        }
+
+        // "Move the Mainframe to my other monitor" or "bring it here".
+        private string MoveFrame(string screen)
+        {
+            ShowFrame();
+            IReadOnlyList<Screen> all = Screens.All;
+            Screen now = Screens.ScreenFromWindow(frame) ?? Screens.Primary;
+            PixelPoint? mouse = Mouse();
+            Screen target = screen == "here" && mouse != null ? Screens.ScreenFromPoint(mouse.Value) : null;
+            if (target == null && all.Count > 1) for (int i = 0; i < all.Count; i++) if (all[i].Equals(now)) target = all[(i + 1) % all.Count];
+            if (target == null) return "It's open, but there's only the one screen to put it on.";
+            PlaceFrame(target);
+            return "Moved my Mainframe.";
+        }
+
+        // Her brain in a line, for the Mainframe.
+        internal string BrainNow
+        {
+            get
+            {
+                Cloud remote = Brain.Remote;
+                if (remote != null) return remote.Company + ": " + (Brain.Model ?? "no model");
+                if (Brain.Server != null) return "My server at " + Brain.Server + ": " + (Brain.Model ?? "no model");
+                return Brain.Model != null ? "Ollama: " + Brain.Model : "No brain yet. Pick one below.";
+            }
+        }
+
+        // Whichever kind of brain she's on, this is its model.
+        internal void PickModel(string model)
+        {
+            if (Brain.Remote != null) PickCloud(model);
+            else if (Brain.Server != null) PickServerModel(model);
+            else PickBrain(model);
+            if (frame != null && frame.IsVisible) frame.Refresh();
+        }
+
         // Her own moves, like on Windows: "teleport here" glitches her over to their mouse, "go to my other monitor" to the same
-        // spot on another screen, and she sits, stands, hangs, hides and comes back. Riding the cursor and the Mainframe are
-        // Windows-only so far.
+        // spot on another screen, and she sits, stands, hangs, hides and comes back. Riding the cursor is Windows-only so far.
         internal string MoveSelf(string action, string screen)
         {
-            if (action == "move_mainframe") return "My Mainframe is only on Windows so far. Here my settings are in my right-click menu.";
+            if (action == "move_mainframe") return MoveFrame(screen);
             if (action == "ride_cursor" || action == "hop_off") return "Riding your cursor is only on Windows so far.";
             if (action == "hide")
             {
@@ -2471,20 +2536,24 @@ namespace CapriDesktop
                 more.Click += delegate { AskPull(); };
                 brainMenu.Items.Add(more);
             }
-            MenuItem own = new MenuItem { Header = "Use my own server (OpenAI API)..." };
-            own.Click += delegate { AskServer(); };
-            brainMenu.Items.Add(own);
             // A cloud key thinks for her instead, for PCs that can't run Ollama's models well. NVIDIA's is free.
             brainMenu.Items.Add(new Separator());
             MenuItem free = new MenuItem { Header = "Get a free NVIDIA key" };
             free.Click += delegate { GetFreeKey(); };
             MenuItem paste = new MenuItem { Header = KeyChoice };
             paste.Click += delegate { AskBrainKey(); };
+            MenuItem hands = new MenuItem { Header = Laya.Url == null ? "Hands: her brain..." : "Hands: Laya at " + Laya.Url + "..." };
+            hands.Click += delegate { AskHands(); };
             MenuItem kilo = new MenuItem { Header = KiloChoice };
             kilo.Click += delegate { AskKiloKey(); };
+            MenuItem endpoint = new MenuItem { Header = EndpointChoice };
+            endpoint.Click += delegate { AskEndpoint(); };
             brainMenu.Items.Add(free);
             brainMenu.Items.Add(paste);
             brainMenu.Items.Add(kilo);
+            brainMenu.Items.Add(endpoint);
+            brainMenu.Items.Add(new Separator());
+            brainMenu.Items.Add(hands);
         }
 
         private string Pulling { get { return "Downloading " + pullingName + (pulled >= 0 ? ": " + pulled + "%" : "..."); } }
@@ -2587,7 +2656,7 @@ namespace CapriDesktop
             Cloud remote = Brain.Remote;
             if (remote == null) return;
             brainMenu.Items.Clear();
-            brainMenu.Items.Add(new MenuItem { Header = remote.Name + " key ending " + Voice.Tail(remote.Key), IsEnabled = false });
+            brainMenu.Items.Add(new MenuItem { Header = remote.Kind == "custom" ? "My endpoint at " + remote.Company : remote.Name + " key ending " + Voice.Tail(remote.Key), IsEnabled = false });
             if (cloudModels == null) brainMenu.Items.Add(new MenuItem { Header = "Loading models...", IsEnabled = false });
             else
                 foreach (string name in cloudModels)
@@ -2607,6 +2676,10 @@ namespace CapriDesktop
             MenuItem back = new MenuItem { Header = "Forget the key and use Ollama" };
             back.Click += delegate { ForgetBrainKey(); };
             brainMenu.Items.Add(back);
+            MenuItem handsMenu = new MenuItem { Header = Laya.Url == null ? "Hands: her brain..." : "Hands: Laya at " + Laya.Url + "..." };
+            handsMenu.Click += delegate { AskHands(); };
+            brainMenu.Items.Add(new Separator());
+            brainMenu.Items.Add(handsMenu);
         }
 
         private void ListCloud()
@@ -2623,7 +2696,10 @@ namespace CapriDesktop
                 Dispatcher.UIThread.Post(delegate
                 {
                     cloudListing = false;
-                    if (found == null || Brain.Remote == null || Brain.Remote.Key != key) return;
+                    if (Brain.Remote == null || Brain.Remote.Key != key) return;
+                    // An endpoint that won't list its models still has the one they named.
+                    if (found == null && Brain.Remote.Kind == "custom") found = new List<string> { Brain.Remote.Model };
+                    if (found == null) return;
                     cloudModels = found;
                     ShowCloud();
                 });
@@ -3565,6 +3641,81 @@ namespace CapriDesktop
             Talk.AskKey(BrainKeyHeard, "Paste your NVIDIA, OpenAI, Claude, DeepSeek, Gemini, OpenRouter or Kilo Code API key and press Enter. It stays on this computer. A free NVIDIA key works.", SaveBrainKey);
         }
 
+        // Laya as her hands, or none. A brain that sees still gives the orders; Laya picks which step carries each one out.
+        internal void SetHands(string url)
+        {
+            Laya.Url = Laya.Clean(url);
+            Saved.HandsUrl = Laya.Url;
+            Save();
+        }
+
+        internal void AskHands()
+        {
+            ComeBack();
+            Talk.AskFor("(her hands)", "Type where Laya answers and press Enter, like " + Laya.Address + ". Start it with laya-serve. A dash turns it off.", delegate(string typed)
+            {
+                string word = (typed ?? "").Trim();
+                string url = word == "-" ? null : Laya.Clean(word);
+                if (word != "-" && url == null) { Talk.Answer("(her hands)", "That address doesn't work. Try " + Laya.Address + "."); return; }
+                SetHands(url);
+                Talk.Answer("(her hands)", url == null ? "My brain's back to picking its own steps." : Laya.Answers(url) ? "Laya's my hands now. My brain gives the orders and it picks the steps." : "Saved, but Laya isn't answering at " + url + " yet. My brain's first step goes ahead until it does.");
+            });
+        }
+
+        // Any OpenAI-style endpoint, so no provider has to be added by name: its URL first, then its key.
+        internal void AskEndpoint()
+        {
+            ComeBack();
+            Talk.AskFor(EndpointHeard, "Type the endpoint's URL and press Enter, like https://api.groq.com/openai/v1 or http://localhost:8080/v1.", delegate(string typed)
+            {
+                string url = Brain.EndpointUrl(typed);
+                if (url == null) { Talk.Answer(EndpointHeard, "That URL doesn't work. Try one like https://api.example.com/v1."); return; }
+                Talk.AskKey(EndpointHeard, "Now paste its API key for " + url + " and press Enter. A dash if it takes none. It only goes to this URL and stays on this computer.", delegate(string key)
+                {
+                    SaveEndpoint(url, key == null || key.Trim() == "-" ? "" : key);
+                });
+            });
+        }
+
+        // Its key and URL go together. One that won't list its models is asked for a model's name instead, unless it turned the key down.
+        internal void SaveEndpoint(string url, string token)
+        {
+            string key = Brain.EndpointKey(url, token);
+            int ticket = ++asking;
+            Talk.Thinking(EndpointHeard);
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                List<string> found = null;
+                string problem = null;
+                int status = 0;
+                try { found = Brain.CloudModels(key); }
+                catch (BrainException error) { problem = error.Message; status = error.Status; }
+                catch (Exception error) { problem = Voice.Short(error.Message); }
+                Dispatcher.UIThread.Post(delegate
+                {
+                    if (ticket != asking) return;
+                    if (status == 401 || status == 403) { Talk.Answer(EndpointHeard, new Uri(url).Host + " turned down that key (HTTP " + status + "). Check it and try again."); return; }
+                    if (found == null)
+                    {
+                        Talk.AskFor(EndpointHeard, "It didn't list its models (" + problem + "). Type the name of the model to use and press Enter.", delegate(string typed)
+                        {
+                            string model = (typed ?? "").Trim();
+                            if (model.Length > 0) KeepEndpoint(key, model, new List<string> { model });
+                        });
+                        return;
+                    }
+                    KeepEndpoint(key, Brain.DefaultCloudModel("custom", found), found);
+                });
+            });
+        }
+
+        private void KeepEndpoint(string key, string model, List<string> models)
+        {
+            UseCloud(key, model, models);
+            WriteSecret(BrainKeyFile, key, "brain key");
+            Talk.Answer(EndpointHeard, "I'm thinking with " + model + " on " + Brain.EndpointName(key) + " now. Change it under Brain in my right-click menu.");
+        }
+
         // Kilo Code's keys have no prefix of their own, so this box marks the key it gets as one.
         internal void AskKiloKey()
         {
@@ -3959,6 +4110,7 @@ namespace CapriDesktop
             [DataMember] internal string LocalVoiceFormat;
             [DataMember] internal string BrainServer;
             [DataMember] internal string ServerModel;
+            [DataMember] internal string HandsUrl;
         }
 
         // Every copy from 0.7.8 on saves a provider, so a cross.json without one was last saved by an older copy.
@@ -3972,12 +4124,13 @@ namespace CapriDesktop
             saved.LocalVoiceFormat = newer.LocalVoiceFormat;
             saved.BrainServer = newer.BrainServer;
             saved.ServerModel = newer.ServerModel;
+            saved.HandsUrl = newer.HandsUrl;
             return saved;
         }
 
         internal static NewSettings Newest(Settings saved)
         {
-            return new NewSettings { VoiceProvider = saved.VoiceProvider, LocalVoiceUrl = saved.LocalVoiceUrl, LocalVoiceModel = saved.LocalVoiceModel, LocalVoiceName = saved.LocalVoiceName, LocalVoiceFormat = saved.LocalVoiceFormat, BrainServer = saved.BrainServer, ServerModel = saved.ServerModel };
+            return new NewSettings { VoiceProvider = saved.VoiceProvider, LocalVoiceUrl = saved.LocalVoiceUrl, LocalVoiceModel = saved.LocalVoiceModel, LocalVoiceName = saved.LocalVoiceName, LocalVoiceFormat = saved.LocalVoiceFormat, BrainServer = saved.BrainServer, ServerModel = saved.ServerModel, HandsUrl = saved.HandsUrl };
         }
 
         private Settings Load()
@@ -4014,6 +4167,7 @@ namespace CapriDesktop
         {
             if (quitting) return;
             quitting = true;
+            if (frame != null) frame.Quit();
             Brain.Cancel();
             voice.Stop();
             if (presence != null) presence.Dispose();
@@ -4028,6 +4182,7 @@ namespace CapriDesktop
 
         internal void Finish(int code)
         {
+            if (frame != null) frame.Quit();
             frames.Stop();
             Talk.Dismiss();
             desktop.Shutdown(code);

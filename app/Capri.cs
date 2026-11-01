@@ -7006,9 +7006,23 @@ namespace CapriDesktop
             FindBrain();
         }
 
+        // Any OpenAI-style endpoint goes through the same box: its URL first, then its key, or a dash if it takes none.
+        private string endpointWaiting;
+
         internal void ConnectText(string key)
         {
             key = (key ?? "").Trim();
+            if (endpointWaiting != null)
+            {
+                key = Brain.EndpointKey(endpointWaiting, key == "-" ? "" : key);
+                endpointWaiting = null;
+            }
+            else if (Regex.IsMatch(key, "^https?://", RegexOptions.IgnoreCase))
+            {
+                endpointWaiting = Brain.EndpointUrl(key);
+                mainframe.ShowProblem(endpointWaiting == null ? "That URL doesn't work. Try one like https://api.example.com/v1." : "Now paste its key, or a dash if it takes none.");
+                return;
+            }
             if (Cloud.KindOf(key) == null) { mainframe.ShowProblem(key.StartsWith("sk-nous-", StringComparison.Ordinal) ? "Nous Portal keys aren't supported yet." : "That isn't a Gemini, OpenRouter, NVIDIA, OpenAI, Claude or DeepSeek key."); return; }
             ListCloud(key, true);
         }
@@ -7045,7 +7059,11 @@ namespace CapriDesktop
             {
                 System.Collections.Generic.List<string> found = null;
                 string problem = null;
-                try { found = Brain.CloudModels(key); }
+                try
+                {
+                    if (connecting && probe.Kind == "kilo") Brain.CheckKilo(key);
+                    found = Brain.CloudModels(key);
+                }
                 catch (BrainException error) { problem = error.Message; }
                 catch (Exception error) { Brain.Log("https://" + probe.Company.ToLowerInvariant() + "/models", -1, error.Message); problem = brain.Remote != null && brain.Remote.Key == key && brain.Remote.Model != null ? probe.Company + " is slow. Using " + brain.Remote.Model + "." : "Couldn't reach " + probe.Company + ". Check your internet."; }
                 Post(delegate

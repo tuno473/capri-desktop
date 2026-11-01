@@ -42,6 +42,11 @@ namespace CapriDesktop
             Secrets + Stops +
             "If the same step didn't change anything twice, try something else or stop.";
 
+        // With Laya as her hands, her brain gives the order and offers the steps that could carry it out, and Laya picks one.
+        internal const string Offering = "\nLaya, a model that can't see, picks your step for you. So instead of one step, reply with exactly one JSON object holding your order in plain words and up to " + "6" + " different steps that could carry it out, best first, each with what it is: " +
+            "{\"order\":\"click the message box in the chat with Ana\",\"options\":[{\"do\":\"click\",\"x\":120,\"y\":540,\"what\":\"the message box at the bottom of the chat\"},{\"do\":\"click\",\"x\":300,\"y\":40,\"what\":\"the search box at the top\"}]}\n" +
+            "When the job is finished or you can't go on, reply with the done or stop step on its own.";
+
         // Her rules follow SECURITY like Windows': Blackwall lets her type passwords and says yes to every step ahead of time.
         internal static string Allowed
         {
@@ -77,7 +82,8 @@ namespace CapriDesktop
                     "\nScreenshot: " + width + " x " + height + " pixels." +
                     (steps.Count == 0 ? "\nNo steps yet." : "\nSteps so far:\n" + string.Join("\n", steps.ToArray())) + "\nThe next step, as one JSON object:";
                 string reply;
-                try { reply = brain.See(shot, Allowed, instruction, 160); }
+                string hands = Laya.Url;
+                try { reply = brain.See(shot, hands == null ? Allowed : Allowed + Offering, instruction, hands == null ? 160 : 500); }
                 catch (BrainException error) { return "Couldn't do that: " + error.Message; }
                 catch (System.Net.WebException error)
                 {
@@ -90,14 +96,33 @@ namespace CapriDesktop
                     steps.Add((step + 1) + ". (your reply wasn't one JSON step, so nothing happened)");
                     continue;
                 }
+                string spoken = null;
+                if (Text(order, "do").Length == 0) order = Chosen(order, hands, job, steps, out spoken);
                 string what = Text(order, "do").ToLowerInvariant();
                 if (what == "done") return "Did it. " + Said(order, "Finished the job.");
                 if (what == "stop") return "Couldn't finish that: " + Said(order, "got stuck.");
                 string done = Act(what, order, width, height);
-                steps.Add((step + 1) + ". " + done);
+                steps.Add((step + 1) + ". " + (spoken == null ? "" : "(" + spoken + ") ") + done);
                 Thread.Sleep(what == "wait" ? 0 : 450);
             }
             return "Ran out of steps before finishing. " + (steps.Count > 0 ? "Last: " + steps[steps.Count - 1].Substring(steps[steps.Count - 1].IndexOf(' ') + 1) : "");
+        }
+
+        // Her brain's order goes to Laya with the steps it offered. If Laya can't say, her brain's first step goes ahead, and
+        // what went wrong goes in errors.txt. Nothing Laya picks can be anything her brain didn't offer.
+        internal static JsonElement Chosen(JsonElement order, string hands, string job, List<string> steps, out string spoken)
+        {
+            spoken = Text(order, "order");
+            List<JsonElement> options = new List<JsonElement>();
+            foreach (JsonElement option in order.GetProperty("options").EnumerateArray())
+                if (option.ValueKind == JsonValueKind.Object && Text(option, "do").Length > 0 && options.Count < Laya.MostOptions) options.Add(option);
+            if (options.Count == 0) return order;
+            if (hands == null || options.Count == 1) return options[0];
+            List<string> offered = options.ConvertAll(delegate(JsonElement option) { string what = Text(option, "what"); return what.Length > 0 ? what : option.GetRawText(); });
+            string trouble;
+            int? picked = Laya.Pick(hands, job, spoken, steps, offered, out trouble);
+            if (trouble != null) Brain.Log("Laya", -1, trouble);
+            return options[picked ?? 0];
         }
 
         private static string Said(JsonElement order, string otherwise)
@@ -244,7 +269,8 @@ namespace CapriDesktop
                         {
                             using (JsonDocument parsed = JsonDocument.Parse(text.Substring(start, i - start + 1)))
                             {
-                                if (parsed.RootElement.ValueKind != JsonValueKind.Object || Text(parsed.RootElement, "do").Length == 0) break;
+                                bool offers = parsed.RootElement.ValueKind == JsonValueKind.Object && parsed.RootElement.TryGetProperty("options", out JsonElement list) && list.ValueKind == JsonValueKind.Array;
+                                if (parsed.RootElement.ValueKind != JsonValueKind.Object || (!offers && Text(parsed.RootElement, "do").Length == 0)) break;
                                 order = parsed.RootElement.Clone();
                                 return true;
                             }
