@@ -605,7 +605,7 @@ namespace CapriDesktop
                 checks.Add("PASS cloud brain: Brain offers a free NVIDIA key or any API key in a hidden box, explains one that isn't a key, lists a key's models to pick from with Nemotron Super and Nemotron's reasoning model marked recommended, and Forget goes back to Ollama");
                 // Updates: a newer finished release puts Get Capri X in her menu and she mentions it once; older releases, drafts and odd tags don't.
                 pet.Saved.UpdateSeen = null;
-                pet.ShowUpdate("{\"tag_name\":\"v99.1.0\",\"draft\":false,\"prerelease\":false,\"html_url\":\"https://github.com/lachydotmcg/capri-desktop/releases/tag/v99.1.0\",\"assets\":[{\"name\":\"Capri-linux-x64.tar.gz\"}]}");
+                pet.ShowUpdate("{\"tag_name\":\"v99.1.0\",\"draft\":false,\"prerelease\":false,\"html_url\":\"https://github.com/tuno473/capri-desktop/releases/tag/v99.1.0\",\"assets\":[{\"name\":\"Capri-linux-x64.tar.gz\"}]}");
                 string updateChoice = pet.UpdateChoice;
                 string updateNews = pet.UpdateNews;
                 string updatePage = pet.UpdatePage;
@@ -624,8 +624,8 @@ namespace CapriDesktop
                 pet.UpdateNews = null;
                 pet.Saved.UpdateSeen = null;
                 pet.Save();
-                if (updateChoice != "Get Capri 99.1.0" || updateNews != "Capri 99.1.0 is out. Right-click me > Get Capri 99.1.0." || updatePage != "https://github.com/lachydotmcg/capri-desktop/releases/tag/v99.1.0") throw new Exception("A newer release wasn't offered: " + updateChoice + " | " + updateNews + " | " + updatePage);
-                if (updateAgain != null || updateKept != "Get Capri 99.1.0" || draftChoice != null || oddPage != "https://github.com/lachydotmcg/capri-desktop/releases/latest" || olderChoice != null || pet.UpdateChoice != null || !oddTags) throw new Exception("The update notice went wrong: " + updateAgain + " | " + updateKept + " | " + draftChoice + " | " + oddPage + " | " + olderChoice + " | " + pet.UpdateChoice + " | " + oddTags);
+                if (updateChoice != "Get Capri 99.1.0" || updateNews != "Capri 99.1.0 is out. Right-click me > Get Capri 99.1.0." || updatePage != "https://github.com/tuno473/capri-desktop/releases/tag/v99.1.0") throw new Exception("A newer release wasn't offered: " + updateChoice + " | " + updateNews + " | " + updatePage);
+                if (updateAgain != null || updateKept != "Get Capri 99.1.0" || draftChoice != null || oddPage != "https://github.com/tuno473/capri-desktop/releases/latest" || olderChoice != null || pet.UpdateChoice != null || !oddTags) throw new Exception("The update notice went wrong: " + updateAgain + " | " + updateKept + " | " + draftChoice + " | " + oddPage + " | " + olderChoice + " | " + pet.UpdateChoice + " | " + oddTags);
                 checks.Add("PASS updates: a newer GitHub release puts Get Capri X in her right-click menu and she says so once; older releases, drafts, odd tags and other sites don't");
                 // Check my screen: the right screenshot tool for the desktop, shrunk to a JPEG, and a plain answer when no tool works.
                 bool toolsRight = Eyes.Tools(true, null, null)[0][0] == "screencapture" && Eyes.Tools(false, "x11", "XFCE")[0][0] == "import" && Eyes.Tools(false, "wayland", "KDE")[0][0] == "spectacle"

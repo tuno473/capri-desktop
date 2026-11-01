@@ -7,11 +7,11 @@
 **Bring Capri (back lol) to life as a desktop companion!**<br>
 She sits on your windows, talks back, plays your games and gets into everything.
 
-<a href="https://github.com/lachydotmcg/capri-desktop/releases/latest/download/Capri-Setup.exe"><img src="https://img.shields.io/badge/Download%20for%20Windows-ff2a6d?style=for-the-badge" alt="Download for Windows"></a>
+<a href="https://github.com/tuno473/capri-desktop/releases/latest/download/Capri-Setup.exe"><img src="https://img.shields.io/badge/Download%20for%20Windows-ff2a6d?style=for-the-badge" alt="Download for Windows"></a>
 <a href="#mac-and-linux-early-preview"><img src="https://img.shields.io/badge/Mac%20and%20Linux-1b1d21?style=for-the-badge" alt="Mac and Linux"></a>
 
-<a href="https://github.com/lachydotmcg/capri-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/lachydotmcg/capri-desktop?label=latest&color=05d9e8&style=flat-square" alt="Latest release"></a>
-<a href="https://github.com/lachydotmcg/capri-desktop/releases"><img src="https://img.shields.io/github/downloads/lachydotmcg/capri-desktop/total?color=05d9e8&style=flat-square" alt="Downloads"></a>
+<a href="https://github.com/tuno473/capri-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/lachydotmcg/capri-desktop?label=latest&color=05d9e8&style=flat-square" alt="Latest release"></a>
+<a href="https://github.com/tuno473/capri-desktop/releases"><img src="https://img.shields.io/github/downloads/lachydotmcg/capri-desktop/total?color=05d9e8&style=flat-square" alt="Downloads"></a>
 <a href="https://discord.gg/F4fDHfGtFk"><img src="https://img.shields.io/badge/Discord-join%20us-5865F2?logo=discord&logoColor=white&style=flat-square" alt="Discord"></a>
 
 [Setup guide](https://lachydotmcg.github.io/capri-desktop/setup/) · [Website](https://lachydotmcg.github.io/capri-desktop/) · [Help](https://lachydotmcg.github.io/capri-desktop/help/) · [Support](#support)
@@ -26,9 +26,14 @@ She sits on your windows, talks back, plays your games and gets into everything.
 > It follows Capri **0.7.8** and stays as close to it as it can. On Linux it adds:
 > - Her own cursor for mouse and keyboard jobs, like Windows. Her artist's cursor glides to each target while your mouse stays where you left it, and she only borrows the real cursor for the instant of a click.
 > - Kilo Code API keys as a brain (Brain > Use a Kilo Code key), through Kilo's gateway, with its free models too.
+> - Any OpenAI-style endpoint as a brain: its URL, then its key (on Windows, in the same Mainframe box as other keys).
+> - Capri Mainframe on Linux and Mac (right-click > Capri Mainframe).
+> - On Linux and Mac, Convai's Laya as her hands for mouse and keyboard jobs: her brain gives the order and offers steps, and Laya picks one.
+>
+> Windows, Linux and Mac builds of this fork are on its [Releases page](https://github.com/tuno473/capri-desktop/releases). They aren't code-signed, so Windows SmartScreen and macOS will warn you. Updates come from this fork, not the official Capri.
 > - Settings that survive opening Capri **0.7.6** or **0.7.7** and coming back. Those versions drop the voice and brain-server settings that 0.7.8 added. This fork keeps a copy in `cross-new.json` and restores them.
 >
-> **It has only been tested on CachyOS with KDE Plasma 6 on Wayland**, with an NVIDIA RTX 3050 Laptop. Hyprland 0.57 was only tried nested inside KDE. It has not been tested on Manjaro, GNOME, Sway, X11, other distros or other compositors, or on Mac or Windows. It may not work as well, or at all, there. If something breaks, please say which system and desktop you're on.
+> **Its new features have only been tried by hand on CachyOS with KDE Plasma 6 on Wayland**, with an NVIDIA RTX 3050 Laptop. Windows and Mac builds only go through automated tests. Hyprland 0.57 was only tried nested inside KDE. It has not been tried by hand on Manjaro, GNOME, Sway, X11, other distros or other compositors, or on Mac or Windows. It may not work as well, or at all, there. If something breaks, please say which system and desktop you're on.
 
 <table align="center">
   <tr>
@@ -74,7 +79,7 @@ Beware that Capri may try to take over your human CPU. We take no responsibility
 
 ## Getting started
 
-1. Download **[Capri-Setup.exe](https://github.com/lachydotmcg/capri-desktop/releases/latest/download/Capri-Setup.exe)** and run it
+1. Download **[Capri-Setup.exe](https://github.com/tuno473/capri-desktop/releases/latest/download/Capri-Setup.exe)** and run it
 2. In the Capri Mainframe, press **Set up her brain**, or press **Free key** to use a free NVIDIA key
 3. Optional: pick another voice under **VOICE** (see [Her voice](#her-voice))
 
@@ -101,7 +106,7 @@ Stuck? The [setup guide](https://lachydotmcg.github.io/capri-desktop/setup/) wal
 
 She sits on your windows and chats, talks with an ElevenLabs key, remembers your chats, watches your screen, opens, switches and closes apps and controls your music. The Mainframe, voice chat and jobs with her own cursor are Windows-only for now.
 
-1. Download [Mac (Apple Silicon)](https://github.com/lachydotmcg/capri-desktop/releases/latest/download/Capri-mac-apple-silicon.zip), [Mac (Intel)](https://github.com/lachydotmcg/capri-desktop/releases/latest/download/Capri-mac-intel.zip) or [Linux](https://github.com/lachydotmcg/capri-desktop/releases/latest/download/Capri-linux-x64.tar.gz)
+1. Download [Mac (Apple Silicon)](https://github.com/tuno473/capri-desktop/releases/latest/download/Capri-mac-apple-silicon.zip), [Mac (Intel)](https://github.com/tuno473/capri-desktop/releases/latest/download/Capri-mac-intel.zip) or [Linux](https://github.com/tuno473/capri-desktop/releases/latest/download/Capri-linux-x64.tar.gz)
 2. For her brain, use a free NVIDIA key or your own Gemini, OpenRouter, OpenAI, Claude or DeepSeek key from **Brain** in her right-click menu. Or install [Ollama](https://ollama.com) and run `ollama pull gemma4:e4b`
 3. **Mac:** unzip it, drag Capri into Applications, then open Terminal and run this once. Needs macOS 15 or newer
    ```bash

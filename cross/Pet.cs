@@ -193,8 +193,8 @@ namespace CapriDesktop
         internal const string DiscordPage = "https://discord.gg/F4fDHfGtFk";
         internal const string HelpPage = "https://lachydotmcg.github.io/capri-desktop/help/";
         // Mac and Linux don't update themselves yet, so she checks GitHub's latest release now and then and offers its page.
-        private const string LatestRelease = "https://api.github.com/repos/lachydotmcg/capri-desktop/releases/latest";
-        private const string ReleasesPage = "https://github.com/lachydotmcg/capri-desktop/releases/latest";
+        private const string LatestRelease = "https://api.github.com/repos/tuno473/capri-desktop/releases/latest";
+        private const string ReleasesPage = "https://github.com/tuno473/capri-desktop/releases/latest";
         internal static readonly double[] Sizes = { 140, 170, 240, 320, 440, 560 };
         internal static readonly string[] SizeNames = { "Tiny", "Small", "Medium", "Large", "Huge", "Giant" };
         internal readonly Brain Brain = new Brain();
@@ -881,7 +881,7 @@ namespace CapriDesktop
             string version = found == null || found.Draft || found.Prerelease ? null : Newer(found.Tag, System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
             if (ContextMenu == null) return;
             if (version == null) { if (updateItem != null) ContextMenu.Items.Remove(updateItem); return; }
-            updatePage = found.Page != null && found.Page.StartsWith("https://github.com/lachydotmcg/capri-desktop/releases/", StringComparison.Ordinal) ? found.Page : ReleasesPage;
+            updatePage = found.Page != null && found.Page.StartsWith("https://github.com/tuno473/capri-desktop/releases/", StringComparison.Ordinal) ? found.Page : ReleasesPage;
             if (updateItem == null)
             {
                 updateItem = new MenuItem();
