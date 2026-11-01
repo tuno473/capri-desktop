@@ -566,6 +566,8 @@ namespace CapriDesktop
                 string freeKey = pet.Talk.Reply;
                 pet.AskBrainKey();
                 bool keyAsked = pet.Talk.Typing && pet.Talk.Typer.Secret && pet.Talk.Reply != null && pet.Talk.Reply.IndexOf("API key", StringComparison.Ordinal) >= 0;
+                // A long token, like a Kilo Code JWT, fits whole in the key box; a chat line still stops at 240.
+                if (pet.Talk.Typer.MaxLength < 2000) throw new Exception("The key box cuts long keys at " + pet.Talk.Typer.MaxLength + " characters.");
                 pet.Talk.Submit("not-a-key");
                 string notKey = pet.Talk.Reply;
                 bool keyHidden = !pet.Talk.Typer.Secret && !File.Exists(Path.Combine(folder, "voice-key"));

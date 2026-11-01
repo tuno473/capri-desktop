@@ -211,13 +211,18 @@ namespace CapriDesktop
 
         internal string Draft { get { return input.Text; } set { input.Text = value; } }
 
+        internal const int Longest = 8192;
+        internal int MaxLength { get { return input.MaxLength; } }
+
         internal bool Secret
         {
             get { return input.PasswordChar != '\0'; }
             set
             {
                 input.PasswordChar = value ? '\u2022' : '\0';
-                input.MaxLength = value ? 200 : 240;
+                // A key can be a long token, like Kilo Code's JWTs, so the key box takes far more than a chat line; cutting
+                // one short at 200 sent half a key and got it turned down.
+                input.MaxLength = value ? Longest : 240;
                 prompt.Text = value ? "> key:" : "> you:";
                 if (value) input.Text = "";
             }
