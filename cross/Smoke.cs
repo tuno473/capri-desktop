@@ -2039,6 +2039,27 @@ namespace CapriDesktop
             if (!shown || !picked) throw new Exception("Capri Mainframe went wrong: shown " + shown + ", picked " + picked + ", " + now);
             checks.Add("PASS Capri Mainframe: right-click > Capri Mainframe opens Windows' panel on Mac and Linux, with her brain, hands, voice, moves, watching, habits and Security, all the same settings as her menu");
             ScreenChecks(panel);
+            CapriVoiceChecks();
+        }
+
+        private void CapriVoiceChecks()
+        {
+            Settings settings = new Settings();
+            Pet.CapriVoice(settings);
+            string first = settings.VoiceProvider + " | " + settings.LocalVoiceUrl + " | " + settings.LocalVoiceModel + " | " + settings.LocalVoiceName;
+            if (first != "local | http://localhost:8880/v1 | kokoro | af_cortes_tuned") throw new Exception("A new install's voice is wrong: " + first);
+            string provider = pet.Saved.VoiceProvider, url = pet.Saved.LocalVoiceUrl, model = pet.Saved.LocalVoiceModel, name = pet.Saved.LocalVoiceName, format = pet.Saved.LocalVoiceFormat;
+            pet.UseCapriVoice();
+            bool used = pet.VoiceStatus.Contains(Speakers.CapriVoice);
+            pet.SetVoiceProvider(Speakers.Off);
+            bool changed = pet.Saved.VoiceProvider == Speakers.Off;
+            pet.Saved.LocalVoiceUrl = url;
+            pet.Saved.LocalVoiceModel = model;
+            pet.Saved.LocalVoiceName = name;
+            pet.Saved.LocalVoiceFormat = format;
+            pet.SetVoiceProvider(provider);
+            if (!used || !changed) throw new Exception("Use Capri's voice went wrong: used " + used + ", changed away " + changed);
+            checks.Add("PASS Capri's voice: a new install starts on it, Mainframe's Use Capri's voice picks it again, and they can still change to another");
         }
 
         // Her Mainframe's resolution row, against a made-up kscreen-doctor: nothing here touches a real screen.

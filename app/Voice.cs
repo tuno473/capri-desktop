@@ -3062,6 +3062,9 @@ namespace CapriDesktop
         internal const string Style = "Your server";
         internal const string Menu = "Any voice model";
         internal const string Address = "http://localhost:8880/v1";
+        // The voice this fork ships in voices/: a Kokoro voice that setup/install-voice puts on their own server.
+        internal const string CapriModel = "kokoro";
+        internal const string CapriVoice = "af_cortes_tuned";
         internal const string Filling = " Her free voice is filling in.";
         internal const string OpenAi = "openai";
         internal const string Fish = "fish";
@@ -3098,6 +3101,8 @@ namespace CapriDesktop
                 "Fish Speech running on your PC with tools/api_server.py. Voice is a reference ID you added to it, or blank."),
             new Service("Kokoro · on your PC", OpenAi, Address, "kokoro", "af_heart", "Optional", "Optional",
                 "Kokoro-FastAPI running on your PC, with voices like af_heart, af_bella and am_adam."),
+            new Service("Capri's voice · on your PC", OpenAi, Address, CapriModel, CapriVoice, "Optional", "Optional",
+                "The voice this fork ships, on Kokoro-FastAPI. Install it once with setup/install-voice.ps1 from this fork's README; until then she uses her free voice."),
             new Service("OpenAI · cloud", OpenAi, OpenAiCloud, "gpt-4o-mini-tts", "marin", "Optional", "Paste your OpenAI key",
                 "OpenAI's voices with your OpenAI key: marin, cedar, coral, alloy and more."),
             new Service("Any OpenAI-style server", OpenAi, null, null, null, "Optional", "Optional",

@@ -1,0 +1,45 @@
+name: Voice setup
+
+# Installs Capri's voice from scratch on each system, makes sure it speaks, and stops it.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - setup/**
+      - voices/**
+      - .github/workflows/voice-setup.yml
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - shell: pwsh
+        env:
+          CAPRI_VOICE_TEST: '1'
+        run: ./setup/install-voice.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voice-windows
+          path: ~/AppData/Local/Capri/voice-server/server.log
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CAPRI_VOICE_TEST: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - run: bash setup/install-voice.sh
+  mac:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      CAPRI_VOICE_TEST: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - run: bash setup/install-voice.sh

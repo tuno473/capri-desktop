@@ -460,6 +460,7 @@ namespace CapriDesktop
             folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Capri");
             fresh = Program.Smoke == null && !File.Exists(Path.Combine(folder, "cross.json"));
             Saved = Program.Smoke != null ? new Settings() : Load();
+            if (fresh) CapriVoice(Saved);
             // Security, like Windows: Mac and Linux have the first five toggles' features, and settings from before it get Trusted.
             // Her mouse and keyboard jobs too, once /dev/uinput lets her make her own (Fingers). The smoke test keeps the five.
             fingers = Program.Smoke == null && Fingers.Problem == null;
@@ -3872,6 +3873,35 @@ namespace CapriDesktop
                 try { return LocalSpeaker.Where(LocalSpeaker.Endpoint(localVoice.Address)); }
                 catch (VoiceException) { return "not set"; }
             }
+        }
+
+        // A new install starts on the voice this fork ships; anyone who already has settings keeps the voice they had.
+        internal static void CapriVoice(Settings settings)
+        {
+            settings.VoiceProvider = Speakers.Local;
+            settings.LocalVoiceUrl = LocalSpeaker.Default;
+            settings.LocalVoiceModel = Speakers.CapriModel;
+            settings.LocalVoiceName = Speakers.CapriVoice;
+            settings.LocalVoiceFormat = LocalSpeaker.Wav;
+        }
+
+        internal void UseCapriVoice()
+        {
+            voice.Stop();
+            CapriVoice(Saved);
+            localVoice.Url = Saved.LocalVoiceUrl;
+            localVoice.Model = Saved.LocalVoiceModel;
+            localVoice.Speaker = Saved.LocalVoiceName;
+            localVoice.Format = Saved.LocalVoiceFormat;
+            voiceProblem = null;
+            Save();
+        }
+
+        internal void InstallCapriVoice()
+        {
+            ComeBack();
+            if (Program.Smoke == null) Browse(Speakers.CapriSetup);
+            Talk.Answer("(her voice)", "That page has one line to paste in a terminal. It sets up my voice on your computer, then I'll speak by myself.");
         }
 
         internal void SetVoiceProvider(string picked)

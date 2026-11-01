@@ -161,6 +161,22 @@ For a Capri-style voice in Fish Audio or ElevenLabs, paste the [voice prompt fro
 >
 > Only use voices you have the necessary rights and permissions to use, and follow the provider's terms. We do not endorse unauthorized cloning or impersonation of voice actors or other individuals. **Capri prohibits cloning or impersonating a living person's voice without explicit, informed consent or other valid authorization.**
 
+## Capri's voice
+
+This fork ships its own voice, and a new install uses it by default. Anyone updating keeps the voice they had. It runs on your computer through [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), so install that once with the line for your system. It needs git and about 3 GB, and starts by itself when you log in.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuno473/capri-desktop/main/setup/install-voice.sh | bash
+```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/tuno473/capri-desktop/main/setup/install-voice.ps1 | iex
+```
+
+Until it's installed she writes her replies, or on Windows uses her free voice. To change voice, use VOICE in her Mainframe, which also has **Use Capri's voice** to come back to it (on Windows, CUSTOM LOCAL > Set up > Capri's voice). More about the voice in [`voices/`](voices/README.md).
+
 ## Make her yours
 
 Pick what she calls you, her language, her voice and what she does on your PC from the Capri Mainframe. Who she is stays the same for everyone, and since 0.7.6 there's no `personality.md` to rewrite.

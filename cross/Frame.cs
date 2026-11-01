@@ -247,6 +247,8 @@ namespace CapriDesktop
             string[] providers = { Speakers.ElevenLabs, Speakers.Local, Speakers.Off };
             Stepped(left, "Provider", names, delegate { return Array.IndexOf(providers, Speakers.Known(pet.Saved.VoiceProvider)); }, delegate(int at) { pet.SetVoiceProvider(providers[at]); Refresh(); });
             Switch(left, "Speak replies", delegate { return pet.Speaks; }, delegate(bool on) { pet.SetSpeak(on); Refresh(); });
+            Pressing(left, "Use Capri's voice", delegate { pet.UseCapriVoice(); Refresh(); });
+            Pressing(left, "Install Capri's voice...", delegate { pet.InstallCapriVoice(); });
             Pressing(left, "Local server's address...", delegate { pet.AskLocalVoice("url"); });
             Pressing(left, "Local server's model...", delegate { pet.AskLocalVoice("model"); });
             Pressing(left, "Local server's voice...", delegate { pet.AskLocalVoice("voice"); });

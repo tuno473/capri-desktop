@@ -1492,7 +1492,9 @@ namespace CapriDesktop
             parakeet = new LocalEars(data);
             heyCapri = new WakeWord(data);
             presence = new Presence(Assembly.GetExecutingAssembly().GetName().Version.ToString(3));
+            bool newInstall = !smoke && !Program.StartedFresh && !File.Exists(settingsPath);
             preferences = smoke ? new Preferences() : LoadPreferences();
+            if (newInstall) CapriVoice(preferences);
             qwen.CpuOnly = preferences.HdCpu;
             bool careNew = !preferences.CareWritten;
             careLines = new CareLines(Path.Combine(data, "check-ins.md"));
@@ -7799,6 +7801,16 @@ namespace CapriDesktop
             if (VoiceServer.Same(server.Url, server.Api, url, api)) return server.Key;
             if (preferences.AsideUrl != null && VoiceServer.Same(preferences.AsideUrl, VoiceServer.Known(preferences.AsideApi), url, api)) return Voice.Unprotect(preferences.AsideKey);
             return null;
+        }
+
+        // A new install starts on the voice this fork ships; anyone who already has settings keeps the voice they had.
+        private static void CapriVoice(Preferences settings)
+        {
+            settings.ServerVoice = true;
+            settings.ServerUrl = VoiceServer.Address;
+            settings.ServerApi = null;
+            settings.ServerModel = VoiceServer.CapriModel;
+            settings.ServerSpeaker = VoiceServer.CapriVoice;
         }
 
         private void LoadServer()
@@ -26059,7 +26071,7 @@ namespace CapriDesktop
                             string vsPanelUsual = "Fish Audio · cloud | " + VoiceServer.FishCloud + " | " + VoiceServer.FishFree + " |  | Paste your Fish Audio key | - | ";
                             string vsCloudOnly = "CLOUD VOICE > | Fish Audio · cloud, OpenAI · cloud";
                             if (vsMenu.IndexOf(VoiceServer.Menu, StringComparison.Ordinal) >= 0 || !vsMenu.StartsWith("Her own (picked), Bright, Sly, Sharp, -, HD ", StringComparison.Ordinal) || vsOpened != vsPanelUsual
-                                || vsCloudFields != "no address | Model | Voice | Key | -" || vsCloudChoices != vsCloudOnly || vsCustomChoices != "CUSTOM LOCAL > | Voice model file · on your PC, Fish Speech · on your PC, Kokoro · on your PC, Any OpenAI-style server"
+                                || vsCloudFields != "no address | Model | Voice | Key | -" || vsCloudChoices != vsCloudOnly || vsCustomChoices != "CUSTOM LOCAL > | Voice model file · on your PC, Fish Speech · on your PC, Kokoro · on your PC, Capri's voice · on your PC, Any OpenAI-style server"
                                 || vsCloudSwitch != "OpenAI · cloud | " + VoiceServer.OpenAiCloud + " | gpt-4o-mini-tts | marin | Paste your OpenAI key | - | Key cleared: paste the key for OpenAI · cloud."
                                 || vsKokoro != "Kokoro · on your PC | " + VoiceServer.Address + " | kokoro | af_heart | Optional | - |  / Address | Model | Voice | Key | -"
                                 || vsFileShown != "Voice model file · on your PC |  |  |  | Optional | - |  / Model folder | Language | Speaker or clip | no key | Browse..."
@@ -28327,6 +28339,10 @@ namespace CapriDesktop
                             TalkChecks(checks);
                             ListenCapriChecks(output, checks);
                             GamingChecks(output, checks);
+                            Preferences newOne = new Preferences();
+                            CapriVoice(newOne);
+                            if (!newOne.ServerVoice || newOne.ServerUrl != VoiceServer.Address || newOne.ServerModel != "kokoro" || newOne.ServerSpeaker != "af_cortes_tuned" || VoiceServer.Known(newOne.ServerApi) != VoiceServer.OpenAi) throw new Exception("A new install's voice is wrong.");
+                            checks.Add("PASS Capri's voice: a new install starts on it through CUSTOM LOCAL, and its panel can pick it again or any other");
                             checks.Add("LIMIT handler-driven integration test; physical mouse input and tray UI require a manual check");
                             checks.Add("PASS quit menu requested application exit");
                             File.WriteAllLines(Path.Combine(output, "smoke-test.txt"), checks);
