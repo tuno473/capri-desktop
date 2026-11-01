@@ -84,6 +84,10 @@ namespace CapriDesktop
 
         internal bool Listening { get { return running; } }
 
+        // The mic is open but nothing has come from it for 5 s: unplugged, lost when the PC slept, or dropped by its driver.
+        internal bool Stalled { get { return running && Environment.TickCount - lastChunk > 5000; } }
+        private volatile int lastChunk;
+
         internal static List<Mic> List()
         {
             List<Mic> found = new List<Mic>();
@@ -199,6 +203,7 @@ namespace CapriDesktop
                 waveInPrepareHeader(device, headers[i], size);
                 waveInAddBuffer(device, headers[i], size);
             }
+            lastChunk = Environment.TickCount;
             running = true;
             waveInStart(device);
             worker = new Thread(Pump);
@@ -246,6 +251,7 @@ namespace CapriDesktop
                         IntPtr pointer = headers[next];
                         WaveHeader header = (WaveHeader)Marshal.PtrToStructure(pointer, typeof(WaveHeader));
                         if ((header.Flags & 1) == 0) break;
+                        lastChunk = Environment.TickCount;
                         short[] chunk = new short[header.Recorded / 2];
                         Marshal.Copy(header.Data, chunk, 0, chunk.Length);
                         Marshal.WriteInt32(pointer, flags, header.Flags & ~1);
@@ -256,7 +262,7 @@ namespace CapriDesktop
                     }
                 }
             }
-            catch (Exception) { }
+            catch (Exception error) { if (running) Brain.Log("ears", -1, "Her mic stopped: " + error.Message); }
         }
 
         internal void Feed(short[] chunk)
@@ -1172,7 +1178,7 @@ namespace CapriDesktop
             if (!Ready) throw new IOException("Her ears aren't in yet.");
             LocalVoice.Load(engine);
             List<IntPtr> held = new List<IntPtr>();
-            Func<string, IntPtr> keep = delegate(string value) { IntPtr pointer = Utf8(value); held.Add(pointer); return pointer; };
+            Func<string, IntPtr> keep = delegate(string value) { IntPtr pointer = Utf8(LocalVoice.Plain(value)); held.Add(pointer); return pointer; };
             // SherpaOnnxOfflineRecognizerConfig from sherpa-onnx 1.13.8 on 64-bit Windows, written by offset. Every field left at
             // zero takes the library's default: 16 kHz features, greedy search, no language model.
             IntPtr config = Marshal.AllocHGlobal(ConfigBytes);
@@ -2226,7 +2232,7 @@ namespace CapriDesktop
             if (!Ready) throw new IOException("Her wake word isn't in yet.");
             LocalVoice.Load(engine);
             List<IntPtr> kept = new List<IntPtr>();
-            Func<string, IntPtr> keep = delegate(string value) { IntPtr pointer = LocalVoice.Utf8(value); kept.Add(pointer); return pointer; };
+            Func<string, IntPtr> keep = delegate(string value) { IntPtr pointer = LocalVoice.Utf8(LocalVoice.Plain(value)); kept.Add(pointer); return pointer; };
             string tuning = " :" + Boost.ToString("0.###", CultureInfo.InvariantCulture) + " #" + Threshold.ToString("0.###", CultureInfo.InvariantCulture) + " @HEY_CAPRI";
             byte[] keywords = Encoding.UTF8.GetBytes(string.Join("\n", Array.ConvertAll(Phrases, delegate(string phrase) { return phrase + tuning; })));
             string folder = Folder;

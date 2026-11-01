@@ -24,6 +24,8 @@
   <true/>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Capri listens for you during voice chat. It stays on your Mac.</string>
   <key>NSAppleEventsUsageDescription</key>
   <string>Capri plays, pauses and skips songs in Spotify or Music when you ask her to.</string>
 </dict>

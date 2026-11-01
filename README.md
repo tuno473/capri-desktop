@@ -281,6 +281,8 @@ Pick what she calls you, her language, her voice and what she does on your PC fr
 - [x] Chat memory, watching your screen, pop-ins and Discord status (0.7.6)
 - [x] Switching and closing your apps (0.7.6)
 - [x] Telling you when a new version is out (0.7.6)
+- [x] Chaos mode, her upset clones and diagrams, on this fork. Moving windows has been tried on KDE; X11, Hyprland and Mac still need trying
+- [x] On this fork: voice chat with her own ears, her keys, updates that install themselves, finding and reading files, website nicknames, "tell me when..." and, on Mac, mouse and keyboard jobs. Also her boards and chess, Hey Capri, a mic picker, hearing the PC's sound, watching along, her mini player, her free voice, her own brain with no Ollama, a simpler Gaming Mode and clips through gpu-screen-recorder. Tried on KDE only so far, and the Mac parts haven't met a real Mac
 - [ ] The Mainframe
 - [ ] Voice chat and her free voice
 - [ ] Jobs with her own cursor

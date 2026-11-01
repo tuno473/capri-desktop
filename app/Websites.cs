@@ -5,7 +5,9 @@ using System.IO;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Text.RegularExpressions;
+#if !CROSS
 using System.Windows.Automation;
+#endif
 
 namespace CapriDesktop
 {
@@ -21,7 +23,11 @@ namespace CapriDesktop
         private readonly string path;
         private readonly object gate = new object();
         private readonly List<Entry> entries = new List<Entry>();
+#if CROSS
+        internal Func<string> Current = delegate { return null; };
+#else
         internal Func<string> Current = FrontAddress;
+#endif
 
         internal Websites(string folder)
         {
@@ -101,6 +107,7 @@ namespace CapriDesktop
             return forgotten.Success ? new ToolArguments { Action = "forget", Name = Key(forgotten.Groups[1].Value) } : null;
         }
 
+#if !CROSS
         internal static bool Browser(string program) { return Regex.IsMatch(program ?? "", @"^(?:chrome|msedge|firefox|opera|opera gx|brave|vivaldi)$", RegexOptions.IgnoreCase); }
 
         internal static IntPtr BrowserWindow(IntPtr front, string program, bool hers, IList<OpenWindow> windows)
@@ -152,5 +159,6 @@ namespace CapriDesktop
             }
             catch (Exception) { return null; }
         }
+#endif
     }
 }

@@ -303,6 +303,32 @@ namespace CapriDesktop
         [System.Runtime.InteropServices.DllImport("libX11.so.6")] private static extern IntPtr XInternAtom(IntPtr display, string name, bool onlyIfExists);
         [System.Runtime.InteropServices.DllImport("libX11.so.6")] private static extern int XChangeProperty(IntPtr display, IntPtr window, IntPtr property, IntPtr type, int format, int mode, IntPtr[] data, int count);
 
+        [System.Runtime.InteropServices.DllImport("libXext.so.6")] private static extern void XShapeCombineRectangles(IntPtr display, IntPtr window, int kind, int x, int y, IntPtr rectangles, int count, int operation, int ordering);
+        [System.Runtime.InteropServices.DllImport("/usr/lib/libobjc.A.dylib")] private static extern IntPtr sel_registerName(string name);
+        [System.Runtime.InteropServices.DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")] private static extern void Send(IntPtr target, IntPtr selector, bool value);
+
+        // Every click falls through to whatever's under it: an empty input shape on X11 and XWayland, and Cocoa's own switch on Mac.
+        internal static void ClickThrough(Window window)
+        {
+            try
+            {
+                IPlatformHandle handle = window.TryGetPlatformHandle();
+                if (handle == null) return;
+                if (OperatingSystem.IsMacOS())
+                {
+                    Send(handle.Handle, sel_registerName("setIgnoresMouseEvents:"), true);
+                    return;
+                }
+                if (!OperatingSystem.IsLinux()) return;
+                IntPtr display = XOpenDisplay(IntPtr.Zero);
+                if (display == IntPtr.Zero) return;
+                XShapeCombineRectangles(display, handle.Handle, 2, 0, 0, IntPtr.Zero, 0, 0, 0);
+                XFlush(display);
+                XCloseDisplay(display);
+            }
+            catch (Exception) { }
+        }
+
         internal static void Overlay(Window window, string title)
         {
             AboveGames(window);

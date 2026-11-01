@@ -20,13 +20,14 @@ namespace CapriDesktop
         internal const string ElevenLabs = "elevenlabs";
         internal const string Local = "local";
         internal const string Off = "off";
+        internal const string Free = "free";
         // The voice this fork ships in voices/: a Kokoro voice that setup/install-voice puts on their own server.
         internal const string CapriModel = "kokoro";
         internal const string CapriVoice = "af_cortes_tuned";
         internal const string CapriSetup = "https://github.com/tuno473/capri-desktop#capris-voice";
 
         // Settings from before providers have none saved, and they were ElevenLabs.
-        internal static string Known(string saved) { return saved == Local || saved == Off ? saved : ElevenLabs; }
+        internal static string Known(string saved) { return saved == Local || saved == Off || saved == Free ? saved : ElevenLabs; }
     }
 
     internal sealed class ElevenLabsSpeaker : ISpeaker

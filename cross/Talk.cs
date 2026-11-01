@@ -731,6 +731,13 @@ namespace CapriDesktop
 
         internal bool Over { get { return face.IsPointerOver; } }
 
+        internal void Chat(bool on, bool muted)
+        {
+            face.Chatting = on;
+            face.Muted = muted;
+            face.InvalidateVisual();
+        }
+
         // True for the few frames it glitches in.
         internal bool Tearing { get { return face.Tear > 0; } }
 
@@ -829,7 +836,7 @@ namespace CapriDesktop
                 keyTo(text);
             };
             Pill.Typing += delegate { if (Typer.IsVisible) Typer.Hide(); else Open(); };
-            Pill.Voice += delegate { pet.NoVoice(); };
+            Pill.Voice += delegate { pet.ToggleChat(); };
             Bubble.Dismissed += delegate { if (leaving < 0) leaving = pet.Now; };
         }
 
@@ -839,6 +846,8 @@ namespace CapriDesktop
         internal bool Typing { get { return Typer.IsVisible; } }
         internal bool Done { get { return reply != null && replyDone >= 0; } }
         internal bool Quiet { get { return reply == null && !thinking && !Typer.IsVisible; } }
+        internal bool IsThinking { get { return thinking; } }
+        internal string LastHeard { get; private set; }
         internal Control Face { get { return Bubble.Sheet; } }
 
         internal void Open()
@@ -888,6 +897,7 @@ namespace CapriDesktop
         // sight: it would float there with nobody under it, and stop her pop-ins until she's shown.
         internal void Answer(string heard, string answer, double seconds = 0)
         {
+            LastHeard = heard;
             if (pet.Away) return;
             reply = answer;
             thinking = false;

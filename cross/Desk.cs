@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Text;
 using System.Text.Json;
 using Avalonia;
@@ -16,6 +17,7 @@ namespace CapriDesktop
         internal PixelRect Bounds;
         internal bool Seat;
         internal bool Solid;
+        internal int Pid;
     }
 
     internal abstract class Desk
@@ -50,6 +52,19 @@ namespace CapriDesktop
 
         // Asks the window manager not to give this window the keyboard when it's shown.
         internal virtual void Unfocused(long window) { }
+
+        // For her clones: drags a window a step (goal and seconds say where it's headed, for desks that glide it themselves),
+        // lets go of it, and puts it somewhere for good. False means this window can't be moved from here.
+        internal virtual bool Carry(long window, PixelPoint at, PixelPoint goal, double seconds) { return false; }
+        internal virtual void Halt(long window) { }
+        internal virtual bool Place(long window, PixelPoint at) { return Carry(window, at, at, 0); }
+        // The cursor to this spot, where the desktop lets her without her virtual mouse.
+        internal virtual bool Warp(PixelPoint at) { return false; }
+        // While her clones are out: what the desk needs to see their mouse and Esc. Null from EscDown means it can't see Esc.
+        internal virtual void Chaos(bool on) { }
+        internal virtual Func<bool> EscDown { get { return null; } }
+        // Her keys, like Windows': 0 talk (Ctrl + Alt + V), 1 mute the mic (Ctrl + Alt + N), 2 quiet (Ctrl + Alt + P). False where the desk can't.
+        internal virtual bool Keys(Action<int> pressed) { return false; }
 
         protected bool Fills(PixelRect bounds)
         {
@@ -199,6 +214,95 @@ namespace CapriDesktop
 
         internal override List<Spot> Windows(ICollection<long> skip) { return List(OnScreenOnly | ExcludeDesktop, 0, skip, true); }
 
+        private const string Access = "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices";
+        private const string CoreStrings = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
+        [DllImport(Access)] private static extern bool AXIsProcessTrusted();
+        [DllImport(Access)] private static extern IntPtr AXUIElementCreateApplication(int pid);
+        [DllImport(Access)] private static extern int AXUIElementCopyAttributeValue(IntPtr element, IntPtr attribute, out IntPtr value);
+        [DllImport(Access)] private static extern int AXUIElementSetAttributeValue(IntPtr element, IntPtr attribute, IntPtr value);
+        [DllImport(Access)] private static extern IntPtr AXValueCreate(int type, ref Place value);
+        [DllImport(Access)] private static extern bool AXValueGetValue(IntPtr value, int type, out Place result);
+        [DllImport(Access)] private static extern int CGWarpMouseCursorPosition(Place at);
+        [DllImport(CoreStrings)] private static extern IntPtr CFStringCreateWithCString(IntPtr allocator, string text, uint encoding);
+        [DllImport(Access)] private static extern bool CGEventSourceKeyState(int source, ushort key);
+        private readonly Dictionary<long, IntPtr> grips = new Dictionary<long, IntPtr>();
+        private static IntPtr positionName;
+
+        internal override Func<bool> EscDown { get { return delegate { return CGEventSourceKeyState(0, 53); }; } }
+
+        private const string Carbon = "/System/Library/Frameworks/Carbon.framework/Carbon";
+        [StructLayout(LayoutKind.Sequential)] private struct HotId { internal uint Signature, Id; }
+        [StructLayout(LayoutKind.Sequential)] private struct EventKind { internal uint Class, Kind; }
+        private delegate int HotHandler(IntPtr next, IntPtr evt, IntPtr user);
+        [DllImport(Carbon)] private static extern IntPtr GetApplicationEventTarget();
+        [DllImport(Carbon)] private static extern int InstallEventHandler(IntPtr target, HotHandler handler, uint count, EventKind[] kinds, IntPtr user, out IntPtr made);
+        [DllImport(Carbon)] private static extern int RegisterEventHotKey(uint key, uint modifiers, HotId id, IntPtr target, uint options, out IntPtr made);
+        [DllImport(Carbon)] private static extern int GetEventParameter(IntPtr evt, uint name, uint type, IntPtr actual, uint size, IntPtr used, out HotId value);
+        private static HotHandler hotKept;
+
+        // Mac's own global keys: Control + Option + V, N and P, the Ctrl + Alt of Windows.
+        internal override bool Keys(Action<int> pressed)
+        {
+            const uint Keyboard = 0x6B657962, HotKeyPressed = 5, DirectId = 0x686B6964, TypeId = 0x686B6964, Signature = 0x43505249, Control = 0x1000, Option = 0x800;
+            hotKept = delegate(IntPtr next, IntPtr evt, IntPtr user)
+            {
+                HotId id;
+                if (GetEventParameter(evt, DirectId, TypeId, IntPtr.Zero, 8, IntPtr.Zero, out id) == 0) pressed((int)id.Id);
+                return 0;
+            };
+            IntPtr target = GetApplicationEventTarget(), made;
+            if (InstallEventHandler(target, hotKept, 1, new[] { new EventKind { Class = Keyboard, Kind = HotKeyPressed } }, IntPtr.Zero, out made) != 0) return false;
+            uint[] keys = { 9, 45, 35 };
+            for (uint i = 0; i < keys.Length; i++) RegisterEventHotKey(keys[i], Control | Option, new HotId { Signature = Signature, Id = i }, target, 0, out made);
+            return true;
+        }
+
+        internal override bool Warp(PixelPoint at) { return CGWarpMouseCursorPosition(new Place { X = at.X / Scale, Y = at.Y / Scale }) == 0; }
+
+        // Mac moves another app's window through Accessibility, which they allow once under Privacy & Security. Her window is
+        // found by matching its frame among its app's windows, since Accessibility doesn't share Quartz's window numbers.
+        internal override bool Carry(long window, PixelPoint at, PixelPoint goal, double seconds)
+        {
+            if (!AXIsProcessTrusted()) return false;
+            if (positionName == IntPtr.Zero) positionName = CFStringCreateWithCString(IntPtr.Zero, "AXPosition", 0x08000100);
+            IntPtr grip;
+            if (!grips.TryGetValue(window, out grip) && (grip = Grip(window)) == IntPtr.Zero) return false;
+            grips[window] = grip;
+            Place place = new Place { X = at.X / Scale, Y = at.Y / Scale };
+            IntPtr value = AXValueCreate(1, ref place);
+            if (value == IntPtr.Zero) return false;
+            try { return AXUIElementSetAttributeValue(grip, positionName, value) == 0; }
+            finally { CFRelease(value); }
+        }
+
+        internal override void Halt(long window) { }
+
+        private IntPtr Grip(long window)
+        {
+            Spot spot = Find(window);
+            if (spot == null || spot.Pid == 0) return IntPtr.Zero;
+            IntPtr app = AXUIElementCreateApplication(spot.Pid), list;
+            if (app == IntPtr.Zero) return IntPtr.Zero;
+            IntPtr windowsName = CFStringCreateWithCString(IntPtr.Zero, "AXWindows", 0x08000100);
+            try
+            {
+                if (AXUIElementCopyAttributeValue(app, windowsName, out list) != 0 || list == IntPtr.Zero) return IntPtr.Zero;
+                long count = CFArrayGetCount(list);
+                if (positionName == IntPtr.Zero) positionName = CFStringCreateWithCString(IntPtr.Zero, "AXPosition", 0x08000100);
+                for (long i = 0; i < count; i++)
+                {
+                    IntPtr candidate = CFArrayGetValueAtIndex(list, i), where;
+                    if (AXUIElementCopyAttributeValue(candidate, positionName, out where) != 0 || where == IntPtr.Zero) continue;
+                    Place place;
+                    bool read = AXValueGetValue(where, 1, out place);
+                    CFRelease(where);
+                    if (read && Math.Abs(place.X * Scale - spot.Bounds.X) < 2 && Math.Abs(place.Y * Scale - spot.Bounds.Y) < 2) return candidate;
+                }
+                return IntPtr.Zero;
+            }
+            finally { CFRelease(windowsName); CFRelease(app); }
+        }
+
         internal override Spot Find(long window)
         {
             foreach (Spot spot in List(IncludingWindow, (uint)window, new long[0], true)) if (spot.Window == window) return spot;
@@ -232,7 +336,9 @@ namespace CapriDesktop
                     if (box == IntPtr.Zero || !CGRectMakeWithDictionaryRepresentation(box, out area)) continue;
                     PixelRect bounds = new PixelRect((int)Math.Round(area.X * Scale), (int)Math.Round(area.Y * Scale), (int)Math.Round(area.Width * Scale), (int)Math.Round(area.Height * Scale));
                     if (bounds.Width <= 0 || bounds.Height <= 0) continue;
-                    found.Add(Make(id, bounds, true));
+                    Spot made = Make(id, bounds, true);
+                    made.Pid = (int)Whole(info, owner);
+                    found.Add(made);
                 }
             }
             finally { CFRelease(array); }
@@ -291,6 +397,9 @@ namespace CapriDesktop
         [DllImport(Library)] private static extern bool XQueryPointer(IntPtr display, IntPtr window, out IntPtr root, out IntPtr child, out int rootX, out int rootY, out int x, out int y, out uint mask);
         [DllImport(Library)] private static extern int XChangeProperty(IntPtr display, IntPtr window, IntPtr property, IntPtr type, int format, int mode, IntPtr[] data, int elements);
         [DllImport(Library)] private static extern int XFlush(IntPtr display);
+        [DllImport(Library)] private static extern int XMoveWindow(IntPtr display, IntPtr window, int x, int y);
+        [DllImport(Library)] private static extern int XWarpPointer(IntPtr display, IntPtr from, IntPtr to, int fromX, int fromY, uint fromWidth, uint fromHeight, int x, int y);
+        [DllImport(Library)] private static extern int XQueryKeymap(IntPtr display, byte[] keys);
         private static Handler handler;
         private static IntPtr previous;
         private static IntPtr ours;
@@ -313,6 +422,65 @@ namespace CapriDesktop
         }
 
         internal override string Name { get { return "X11"; } }
+
+        [DllImport(Library)] private static extern int XGrabKey(IntPtr display, int key, uint modifiers, IntPtr window, bool ownerEvents, int pointerMode, int keyboardMode);
+        [DllImport(Library)] private static extern int XKeysymToKeycode(IntPtr display, IntPtr keysym);
+        [DllImport(Library)] private static extern int XNextEvent(IntPtr display, byte[] evt);
+
+        // On a display of its own, which does nothing but wait for her keys. Num Lock and Caps Lock count as other modifiers, so each is grabbed with them too.
+        internal override bool Keys(Action<int> pressed)
+        {
+            IntPtr own = XOpenDisplay(IntPtr.Zero);
+            if (own == IntPtr.Zero) return false;
+            IntPtr top = XDefaultRootWindow(own);
+            int[] codes = { XKeysymToKeycode(own, new IntPtr('v')), XKeysymToKeycode(own, new IntPtr('n')), XKeysymToKeycode(own, new IntPtr('p')) };
+            foreach (int code in codes)
+                foreach (uint locks in new uint[] { 0, 2, 16, 18 })
+                    XGrabKey(own, code, 4u | 8u | locks, top, false, 1, 1);
+            XFlush(own);
+            Thread waiter = new Thread(delegate()
+            {
+                byte[] evt = new byte[192];
+                while (true)
+                {
+                    XNextEvent(own, evt);
+                    if (BitConverter.ToInt32(evt, 0) != 2) continue;
+                    int at = Array.IndexOf(codes, BitConverter.ToInt32(evt, 84));
+                    if (at >= 0) pressed(at);
+                }
+            });
+            waiter.IsBackground = true;
+            waiter.Name = "Capri keys";
+            waiter.Start();
+            return true;
+        }
+
+        internal override bool Carry(long window, PixelPoint at, PixelPoint goal, double seconds)
+        {
+            XMoveWindow(display, new IntPtr(window), at.X, at.Y);
+            XFlush(display);
+            return true;
+        }
+
+        internal override bool Warp(PixelPoint at)
+        {
+            XWarpPointer(display, IntPtr.Zero, root, 0, 0, 0, 0, at.X, at.Y);
+            XFlush(display);
+            return true;
+        }
+
+        // X11 shares the keyboard's state with anyone who asks. Esc is key 9 on every layout, and asked on a display of its own
+        // because this one belongs to her window thread.
+        internal override Func<bool> EscDown
+        {
+            get
+            {
+                IntPtr own = XOpenDisplay(IntPtr.Zero);
+                if (own == IntPtr.Zero) return null;
+                byte[] keys = new byte[32];
+                return delegate { XQueryKeymap(own, keys); return (keys[1] & 2) != 0; };
+            }
+        }
 
         internal override PixelPoint? Pointer()
         {
@@ -475,6 +643,70 @@ namespace CapriDesktop
 
         internal override string Name { get { return "Hyprland"; } }
 
+        // Only windows that already float: moving a tile would swap it around their layout, and they couldn't get that back.
+        private readonly HashSet<long> floating = new HashSet<long>();
+
+        internal override bool Carry(long window, PixelPoint at, PixelPoint goal, double seconds)
+        {
+            lock (floating) if (!floating.Contains(window)) return false;
+            Ask("dispatch movewindowpixel exact " + (int)Math.Round(at.X / scale) + " " + (int)Math.Round(at.Y / scale) + ",address:0x" + window.ToString("x"));
+            return true;
+        }
+
+        internal override bool Keys(Action<int> pressed)
+        {
+            string[] letters = { "V", "N", "P" };
+            string[] files = new string[3];
+            for (int i = 0; i < 3; i++)
+            {
+                files[i] = Path.Combine(Path.GetTempPath(), "capri-key" + i + "-" + Environment.ProcessId);
+                Ask("keyword bind CTRL ALT," + letters[i] + ",exec,touch " + files[i]);
+            }
+            Thread waiter = new Thread(delegate()
+            {
+                while (true)
+                {
+                    Thread.Sleep(120);
+                    for (int i = 0; i < 3; i++)
+                        if (File.Exists(files[i])) { File.Delete(files[i]); pressed(i); }
+                }
+            });
+            waiter.IsBackground = true;
+            waiter.Name = "Capri keys";
+            waiter.Start();
+            return true;
+        }
+
+        private string escFile;
+
+        // A bind that lets Esc through, and another for letting it go. Theirs stays theirs: with an Esc bind of their own she
+        // doesn't add any, since taking hers off again would take theirs with it.
+        internal override void Chaos(bool on)
+        {
+            try
+            {
+                if (on && escFile == null)
+                {
+                    if (System.Text.RegularExpressions.Regex.IsMatch(Ask("j/binds") ?? "", @"""key""\s*:\s*""Escape""", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) return;
+                    escFile = Path.Combine(Path.GetTempPath(), "capri-esc-" + Environment.ProcessId);
+                    Ask("keyword bindn ,Escape,exec,touch " + escFile);
+                    Ask("keyword bindrn ,Escape,exec,rm -f " + escFile);
+                }
+                else if (!on && escFile != null)
+                {
+                    Ask("keyword unbind ,Escape");
+                    File.Delete(escFile);
+                    escFile = null;
+                }
+            }
+            catch (Exception) { }
+        }
+
+        internal override Func<bool> EscDown
+        {
+            get { string file = escFile; return file == null ? (Func<bool>)null : delegate { return File.Exists(file); }; }
+        }
+
         internal override string Debug() { return "scale " + scale; }
 
         internal string Ask(string command)
@@ -591,7 +823,9 @@ namespace CapriDesktop
             int width = Px(size[0].GetDouble()), height = Px(size[1].GetDouble());
             if (width <= 0 || height <= 0) return null;
             int full = client.TryGetProperty("fullscreen", out JsonElement screen) ? (screen.ValueKind == JsonValueKind.True ? 1 : screen.ValueKind == JsonValueKind.Number ? screen.GetInt32() : 0) : 0;
-            return Make(Address(client), new PixelRect(Px(at[0].GetDouble()), Px(at[1].GetDouble()), width, height), full == 0);
+            long address = Address(client);
+            lock (floating) { if (client.GetProperty("floating").GetBoolean()) floating.Add(address); else floating.Remove(address); }
+            return Make(address, new PixelRect(Px(at[0].GetDouble()), Px(at[1].GetDouble()), width, height), full == 0);
         }
 
         // Hyprland tiles every new window, which would make her a tile, so each of hers floats and is pinned to every workspace.
@@ -656,6 +890,147 @@ namespace CapriDesktop
 
         internal override string Name { get { return "KDE"; } }
 
+        private const string ChaosScript = "capri-chaos";
+        private readonly Dictionary<long, string> names = new Dictionary<long, string>();
+        private readonly Dictionary<long, PixelPoint> heading = new Dictionary<long, PixelPoint>();
+        private System.Collections.Concurrent.BlockingCollection<Action> errands;
+        private PixelPoint? cursor;
+        private long escAt;
+        private bool chaos;
+
+        private static void Load(string name, string source)
+        {
+            string path = Path.Combine(Path.GetTempPath(), name + "-" + Environment.ProcessId + ".js");
+            File.WriteAllText(path, source);
+            Tool("dbus-send", "--session", "--print-reply", "--dest=org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.unloadScript", "string:" + name);
+            // A script just unloaded keeps its name for a moment, and KWin answers -1 until it lets go of it.
+            System.Text.RegularExpressions.Match id = null;
+            for (int tries = 0; tries < 10; tries++)
+            {
+                string loaded = Tool("dbus-send", "--session", "--print-reply", "--dest=org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", "string:" + path, "string:" + name);
+                id = System.Text.RegularExpressions.Regex.Match(loaded ?? "", @"int32\s+(\d+)");
+                if (id.Success) break;
+                Thread.Sleep(40);
+            }
+            if (id.Success) Tool("dbus-send", "--session", "--print-reply", "--dest=org.kde.KWin", "/Scripting/Script" + id.Groups[1].Value, "org.kde.kwin.Script.run");
+            try { File.Delete(path); }
+            catch (IOException) { }
+        }
+
+        private static void Unload(string name) { Tool("dbus-send", "--session", "--print-reply", "--dest=org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.unloadScript", "string:" + name); }
+
+        // KWin scripts can't be talked to once they run, and a process for every frame would be too many, so a script per
+        // stretch of the drag glides the window to where its hauler's headed, on its own clock.
+        private void Errand(Action errand)
+        {
+            if (errands == null)
+            {
+                errands = new System.Collections.Concurrent.BlockingCollection<Action>();
+                System.Collections.Concurrent.BlockingCollection<Action> queue = errands;
+                Thread runner = new Thread(delegate() { foreach (Action next in queue.GetConsumingEnumerable()) { try { next(); } catch (Exception) { } } });
+                runner.IsBackground = true;
+                runner.Name = "Capri KWin errands";
+                runner.Start();
+            }
+            errands.Add(errand);
+        }
+
+        internal static string GlideSource(string id, PixelPoint from, PixelPoint to, int milliseconds, bool raise)
+        {
+            return "var capriHeld = null, capriList = workspace.windowList();\n" +
+                "for (var i = 0; i < capriList.length; i++) if (String(capriList[i].internalId) === '" + id + "') capriHeld = capriList[i];\n" +
+                "var capriTimer = new QTimer(), capriFrom = Date.now();\n" +
+                "function capriStep() {\n" +
+                "  if (!capriHeld || capriHeld.deleted || capriHeld.fullScreen || capriHeld.move || capriHeld.resize) { capriTimer.stop(); return; }\n" +
+                "  var t = Math.min(1, (Date.now() - capriFrom) / " + Math.Max(1, milliseconds) + "), g = capriHeld.frameGeometry;\n" +
+                "  capriHeld.frameGeometry = { x: " + from.X + " + (" + (to.X - from.X) + ") * t, y: " + from.Y + " + (" + (to.Y - from.Y) + ") * t, width: g.width, height: g.height };\n" +
+                "  if (t >= 1) capriTimer.stop();\n" +
+                "}\n" +
+                (raise ? "if (capriHeld) { var capriActive = workspace.activeWindow; workspace.raiseWindow(capriHeld); if (capriActive && capriActive !== capriHeld) workspace.raiseWindow(capriActive); }\n" : "") +
+                "capriTimer.interval = 33;\ncapriTimer.timeout.connect(capriStep);\ncapriTimer.start();\ncapriStep();\n";
+        }
+
+        internal override bool Carry(long window, PixelPoint at, PixelPoint goal, double seconds)
+        {
+            string id;
+            bool first;
+            lock (gate)
+            {
+                if (!names.TryGetValue(window, out id)) return false;
+                PixelPoint was;
+                first = !heading.TryGetValue(window, out was);
+                if (!first && was == goal) return true;
+                heading[window] = goal;
+            }
+            string name = "capri-haul-" + window;
+            string source = GlideSource(id, at, goal, (int)(seconds * 1000), first);
+            Errand(delegate { Load(name, source); });
+            return true;
+        }
+
+        internal override void Halt(long window)
+        {
+            lock (gate) if (!heading.Remove(window)) return;
+            string name = "capri-haul-" + window;
+            Errand(delegate { Unload(name); });
+        }
+
+        internal override bool Place(long window, PixelPoint at)
+        {
+            string id;
+            lock (gate) { if (!names.TryGetValue(window, out id)) return false; heading.Remove(window); }
+            string name = "capri-haul-" + window;
+            string source = GlideSource(id, at, at, 1, false);
+            Errand(delegate { Load(name, source); Thread.Sleep(120); Unload(name); });
+            return true;
+        }
+
+        // While her clones are out, KWin says where the mouse is and takes Esc as a shortcut, so one press clears them: Wayland
+        // won't show her the key otherwise, and KWin can't say how long it's been held.
+        internal static string ChaosSource(string tag)
+        {
+            return "var capriWas = '';\n" +
+                "function capriCursor() { var now = Math.round(workspace.cursorPos.x) + ' ' + Math.round(workspace.cursorPos.y); if (now !== capriWas) { capriWas = now; print('" + tag + "M ' + now); } }\n" +
+                "registerShortcut('Capri clear clones', 'Capri: clear her clones', 'Escape', function () { print('" + tag + "E'); });\n" +
+                "var capriTimer = new QTimer();\ncapriTimer.interval = 120;\ncapriTimer.timeout.connect(capriCursor);\ncapriTimer.start();\ncapriCursor();\n";
+        }
+
+        internal override void Chaos(bool on)
+        {
+            chaos = on;
+            string source = ChaosSource(tag);
+            if (on) Errand(delegate { Load(ChaosScript, source); });
+            else Errand(delegate { Unload(ChaosScript); ForgetEsc(); });
+            if (!on) lock (gate) cursor = null;
+        }
+
+        // Esc goes back to their apps, and nothing of hers stays in their shortcuts.
+        private static void ForgetEsc() { Tool("dbus-send", "--session", "--print-reply", "--dest=org.kde.kglobalaccel", "/kglobalaccel", "org.kde.KGlobalAccel.unregister", "string:kwin", "string:Capri clear clones"); }
+
+        internal override PixelPoint? Pointer() { lock (gate) return chaos ? cursor : null; }
+
+        private Action<int> keyPressed;
+
+        internal static string KeysSource(string tag)
+        {
+            return "registerShortcut('Capri talk', 'Capri: voice chat', 'Ctrl+Alt+V', function () { print('" + tag + "K0'); });\n" +
+                "registerShortcut('Capri mute', 'Capri: mute her mic', 'Ctrl+Alt+N', function () { print('" + tag + "K1'); });\n" +
+                "registerShortcut('Capri quiet', 'Capri: quiet', 'Ctrl+Alt+P', function () { print('" + tag + "K2'); });\n";
+        }
+
+        internal override bool Keys(Action<int> pressed)
+        {
+            keyPressed = pressed;
+            string source = KeysSource(tag);
+            Errand(delegate { Load("capri-keys", source); });
+            return true;
+        }
+
+        internal override Func<bool> EscDown
+        {
+            get { return delegate { long pressed = Interlocked.Read(ref escAt); return pressed != 0 && Environment.TickCount64 - pressed < 900; }; }
+        }
+
         internal override string Debug() { lock (gate) return problem ?? latest.Count + " windows from KWin"; }
 
         private static string Tool(string file, params string[] args)
@@ -700,8 +1075,22 @@ namespace CapriDesktop
         // Her own windows are left out, and the top window comes first, as the other desks give them.
         internal void Read(string line)
         {
-            int at = line.IndexOf(tag + " ", StringComparison.Ordinal);
-            if (at < 0) return;
+            int at = line.IndexOf(tag, StringComparison.Ordinal);
+            if (at < 0 || line.Length <= at + tag.Length || " EMK".IndexOf(line[at + tag.Length]) < 0) return;
+            if (line[at + tag.Length] == 'K')
+            {
+                Action<int> pressed = keyPressed;
+                if (pressed != null && line.Length > at + tag.Length + 1 && char.IsDigit(line[at + tag.Length + 1])) pressed(line[at + tag.Length + 1] - '0');
+                return;
+            }
+            if (line.Length > at + tag.Length && line[at + tag.Length] == 'E') { Interlocked.Exchange(ref escAt, Environment.TickCount64); return; }
+            if (line.Length > at + tag.Length && line[at + tag.Length] == 'M')
+            {
+                string[] spot = line.Substring(at + tag.Length + 1).Trim().Split(' ');
+                int mouseX, mouseY;
+                if (spot.Length == 2 && int.TryParse(spot[0], out mouseX) && int.TryParse(spot[1], out mouseY)) lock (gate) cursor = new PixelPoint(mouseX, mouseY);
+                return;
+            }
             List<Spot> found = new List<Spot>();
             lock (gate)
             {
@@ -712,8 +1101,10 @@ namespace CapriDesktop
                     if (part.Length != 7 || !int.TryParse(part[1], out pid) || !int.TryParse(part[2], out x) || !int.TryParse(part[3], out y) || !int.TryParse(part[4], out wide) || !int.TryParse(part[5], out tall) || !int.TryParse(part[6], out seat)) continue;
                     if (pid == own || wide <= 0 || tall <= 0) continue;
                     long id;
-                    if (!ids.TryGetValue(part[0], out id)) { id = ids.Count + 1; ids[part[0]] = id; }
-                    found.Insert(0, Make(id, new PixelRect(x, y, wide, tall), seat == 1));
+                    if (!ids.TryGetValue(part[0], out id)) { id = ids.Count + 1; ids[part[0]] = id; names[id] = part[0]; }
+                    Spot made = Make(id, new PixelRect(x, y, wide, tall), seat == 1);
+                    made.Pid = pid;
+                    found.Insert(0, made);
                 }
                 latest = found;
             }
@@ -737,6 +1128,8 @@ namespace CapriDesktop
         internal override void Close()
         {
             try { Tool("dbus-send", "--session", "--print-reply", "--dest=org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.unloadScript", "string:" + Script); }
+            catch (Exception) { }
+            try { Unload(ChaosScript); ForgetEsc(); Unload("capri-keys"); }
             catch (Exception) { }
             try { if (follower != null && !follower.HasExited) follower.Kill(); }
             catch (Exception) { }

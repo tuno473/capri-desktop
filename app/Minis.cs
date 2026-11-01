@@ -1,11 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+#if !CROSS
 using System.Drawing.Drawing2D;
+#endif
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+#if !CROSS
 using System.Windows.Forms;
+#endif
 
 namespace CapriDesktop
 {
@@ -323,6 +327,7 @@ namespace CapriDesktop
         }
     }
 
+#if !CROSS
     internal sealed class MiniBoard : Overlay
     {
         internal const int Wide = 372, Tall = 486;
@@ -852,4 +857,5 @@ namespace CapriDesktop
             ClearMini(localOnly);
         }
     }
+#endif
 }

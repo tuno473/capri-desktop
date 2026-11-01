@@ -181,10 +181,15 @@ namespace CapriDesktop
             return matches;
         }
 
+#if !CROSS
         [DllImport("shell32.dll")] private static extern int SHGetKnownFolderPath(ref Guid folder, uint flags, IntPtr token, out IntPtr path);
+#endif
 
         internal static string Known(string id, string fallback)
         {
+#if CROSS
+            return fallback;
+#else
             IntPtr value = IntPtr.Zero;
             try
             {
@@ -193,6 +198,7 @@ namespace CapriDesktop
             }
             catch (Exception) { return fallback; }
             finally { if (value != IntPtr.Zero) Marshal.FreeCoTaskMem(value); }
+#endif
         }
 
         internal static IEnumerable<string> Steam(string folder)
@@ -242,6 +248,31 @@ namespace CapriDesktop
             return installs;
         }
 
+#if CROSS
+        internal static IEnumerable<string> Places()
+        {
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            foreach (string folder in new[] { "Desktop", "Documents", "Downloads", "Pictures", "Videos", "Movies", "Music", "Escritorio", "Documentos", "Descargas", "Imágenes", "Vídeos", "Música" })
+                yield return Path.Combine(home, folder);
+            foreach (string library in Steam(Limbs.SteamRoot(home, OperatingSystem.IsMacOS()))) yield return library;
+            yield return Path.Combine(home, "Games");
+            yield return Path.Combine(home, ".minecraft");
+            yield return home;
+        }
+
+        internal static IEnumerable<string> Everywhere()
+        {
+            yield return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            foreach (string mounted in new[] { "/mnt", "/media", "/run/media", "/Volumes" }) yield return mounted;
+        }
+
+        private static void Show(string path)
+        {
+            ProcessStartInfo start = OperatingSystem.IsMacOS() ? new ProcessStartInfo("open", "-R \"" + path + "\"") : new ProcessStartInfo("xdg-open", "\"" + Path.GetDirectoryName(path) + "\"");
+            start.UseShellExecute = false;
+            using (Process.Start(start)) { }
+        }
+#else
         internal static IEnumerable<string> Places()
         {
             string profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -286,6 +317,7 @@ namespace CapriDesktop
 
         internal static ProcessStartInfo Explorer(string path) { return new ProcessStartInfo("explorer.exe", "/select,\"" + path + "\"") { UseShellExecute = true }; }
         private static void Show(string path) { using (Process.Start(Explorer(path))) { } }
+#endif
 
         internal static string Spoken(string text)
         {

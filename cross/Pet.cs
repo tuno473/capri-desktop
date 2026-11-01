@@ -36,6 +36,11 @@ namespace CapriDesktop
         [DataMember] internal bool Silent;
         [DataMember] internal int Typing;
         [DataMember] internal bool NoDiscord;
+        [DataMember] internal bool NoUpsetChaos;
+        [DataMember] internal bool HeyCapri;
+        [DataMember] internal bool OwnBrain;
+        [DataMember] internal bool NoMiniPlayer;
+        [DataMember] internal string Mic;
         [DataMember] internal string CloudModel;
         [DataMember] internal string UpdateSeen;
         [DataMember] internal bool StayOnModel;
@@ -158,7 +163,7 @@ namespace CapriDesktop
         }
     }
 
-    internal sealed class Pet : Window
+    internal sealed partial class Pet : Window
     {
         internal const double SitX = 0.30;
         internal const double SitY = 0.79;
@@ -509,7 +514,14 @@ namespace CapriDesktop
                 Chores.Tapped = delegate { Dispatcher.UIThread.Post(delegate { HerPointer.Tap(); }); };
                 Chores.Hidden = delegate(bool hidden) { Dispatcher.UIThread.Invoke(delegate { if (hidden) HerPointer.Hide(); else if (herPointer != null) { HerPointer.Show(); Look.OnTopAgain(herPointer); } }); };
                 Chores.Parked = delegate { Dispatcher.UIThread.Post(delegate { if (herPointer != null) herPointer.Park(); }); };
+                Chores.Says = delegate(string line) { Dispatcher.UIThread.Post(delegate { Reply(asking, "(chat)", line); }); };
             }
+            SetUpInk();
+            SetUpClones();
+            SetUpKeys();
+            SetUpMinis();
+            SetUpTogether();
+            if (Saved.OwnBrain && Program.Smoke == null) GetOwnBrain();
             if (Program.Smoke == null) presence = new Presence(System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString(3));
             // A cloud key they saved thinks for her instead of Ollama, on the model they picked.
             string brainKey = ReadSecret(BrainKeyFile);
@@ -761,7 +773,16 @@ namespace CapriDesktop
         private void Tick()
         {
             double now = Now;
-            if (presence != null && now >= nextStatus) { nextStatus = now + 1; presence.Show(Saved.NoDiscord ? null : Doing); }
+            if (presence != null && now >= nextStatus)
+            {
+                nextStatus = now + 1;
+                presence.Crowd = cloneRoom == null ? 0 : cloneRoom.Swarm.Bodies.Count + 1;
+                presence.Show(Saved.NoDiscord ? null : Doing);
+            }
+            if (now >= nextMonitors) { nextMonitors = now + 1; RememberMonitors(); }
+            CheckEarsShut(MoveClock);
+            if (now >= nextMicCheck) { nextMicCheck = now + 1; CheckMic(); }
+            CheckTunes(now);
             if (Program.Smoke == null && now >= nextUpdate) { nextUpdate = now + 6 * 3600; CheckUpdate(); }
             if (UpdateNews != null && !away && !dragging && Talk.Quiet) { Talk.Answer("(update)", UpdateNews); UpdateNews = null; }
             if (outro != null && now >= outroAt) { Action next = outro; outro = null; next(); }
@@ -807,10 +828,12 @@ namespace CapriDesktop
             get
             {
                 if (away) return "Taking a break";
+                if (Chores.Running) return Hands.Streaming ? "Streaming" : "Using the computer";
+                if (cloneRoom != null) return "Multiplying";
                 if (!Talk.Quiet) return "Chatting";
                 if (clip == dance || clip == perchDance) return musicOn ? "Dancing to music" : "Dancing";
                 if (clip == sleep) return "Asleep";
-                return "Hanging out";
+                return "Plugged in";
             }
         }
 
@@ -819,7 +842,6 @@ namespace CapriDesktop
         {
             Cloud remote = Brain.Remote;
             if (Brain.Model == null) return "You can't see their screen: your brain is offline.";
-            if (remote != null && remote.Kind == "deepseek") return "You can't see their screen: DeepSeek can't look at pictures. Tell them a free NVIDIA key can (right-click you > Brain > Get a free NVIDIA key).";
             byte[] shot = Eyes.Jpeg(Eyes.Shoot(), 1280);
             if (shot == null) return Eyes.Missing;
             string seen;
@@ -873,6 +895,33 @@ namespace CapriDesktop
             });
         }
 
+        private double nextMicCheck;
+        private string updateTag;
+        private bool updating;
+
+        // She fetches it, checks it, swaps it in and comes back as the new one. Anything wrong leaves her as she is, with the page open.
+        private void UpdateNow(string tag, string page)
+        {
+            if (updating) return;
+            updating = true;
+            Talk.Answer("(update)", "Getting the new me. I'll be right back.");
+            string program = Environment.ProcessPath;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string fresh = null, problem = null;
+                try { fresh = Updater.Install(tag, program); }
+                catch (Exception error) { problem = error.Message; }
+                Dispatcher.UIThread.Post(delegate
+                {
+                    updating = false;
+                    if (problem != null) { Brain.Log("update", -1, problem); Talk.Answer("(update)", Voice.Short(problem)); Browse(page); return; }
+                    try { using (System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(fresh) { UseShellExecute = false })) { } }
+                    catch (Exception error) { Brain.Log("update", -1, error.Message); Talk.Answer("(update)", "The new me is in. Open me again to meet her."); return; }
+                    Quit();
+                });
+            });
+        }
+
         // A newer finished release puts "Get Capri X" in her menu, and she mentions it once per version.
         internal void ShowUpdate(string latest)
         {
@@ -886,9 +935,10 @@ namespace CapriDesktop
             if (updateItem == null)
             {
                 updateItem = new MenuItem();
-                updateItem.Click += delegate { Browse(updatePage); };
+                updateItem.Click += delegate { UpdateNow(updateTag, updatePage); };
             }
             updateItem.Header = "Get Capri " + version;
+            updateTag = found.Tag;
             if (!ContextMenu.Items.Contains(updateItem))
             {
                 int at = ContextMenu.Items.Count;
@@ -1372,11 +1422,6 @@ namespace CapriDesktop
             React();
         }
 
-        internal void NoVoice()
-        {
-            Talk.Answer("(voice)", "Voice chat isn't on Mac and Linux yet. Type to me for now, choom.");
-        }
-
         internal void Grab()
         {
             Halt();
@@ -1642,6 +1687,12 @@ namespace CapriDesktop
             loginItem = new MenuItem { Header = "Start at login", ToggleType = MenuItemToggleType.CheckBox };
             loginItem.Click += delegate { SetLogin(!StartsAtLogin); };
             settings.Items.Add(loginItem);
+            miniTunesItem = new MenuItem { Header = "Mini player", ToggleType = MenuItemToggleType.CheckBox };
+            miniTunesItem.Click += delegate { ToggleMiniPlayer(); };
+            settings.Items.Add(miniTunesItem);
+            upsetItem = new MenuItem { Header = "Chaos when upset", ToggleType = MenuItemToggleType.CheckBox };
+            upsetItem.Click += delegate { ToggleUpsetChaos(); };
+            settings.Items.Add(upsetItem);
             discordItem = new MenuItem { Header = "Show on Discord", ToggleType = MenuItemToggleType.CheckBox };
             discordItem.Click += delegate { SetDiscord(Saved.NoDiscord); };
             settings.Items.Add(discordItem);
@@ -1702,6 +1753,10 @@ namespace CapriDesktop
             help.Items.Add(copyErrors);
             MenuItem quit = new MenuItem { Header = "Quit Capri" };
             quit.Click += delegate { Quit(); };
+            clearClonesItem = new MenuItem { Header = "Clear her clones", IsVisible = false };
+            clearClonesItem.Click += delegate { ClonesCleared(); };
+            clearInkItem = new MenuItem { Header = "Clear her drawing", IsVisible = false };
+            clearInkItem.Click += delegate { ClearInk(); };
             menu.Items.Add(talk);
             menu.Items.Add(quietItem);
             menu.Items.Add(sitItem);
@@ -1716,6 +1771,8 @@ namespace CapriDesktop
             menu.Items.Add(settings);
             menu.Items.Add(help);
             menu.Items.Add(discord);
+            menu.Items.Add(clearClonesItem);
+            menu.Items.Add(clearInkItem);
             menu.Items.Add(new Separator());
             menu.Items.Add(quit);
             menu.Opening += delegate { Sync(); RefreshBrains(); RefreshVoice(); };
@@ -1738,6 +1795,8 @@ namespace CapriDesktop
             for (int i = 0; i < soundPicks.Count; i++) soundPicks[i].IsChecked = SoundLevels[i] == Sfx.Level;
             typingItem.IsChecked = TypingSound;
             discordItem.IsChecked = !Saved.NoDiscord;
+            upsetItem.IsChecked = !Saved.NoUpsetChaos;
+            miniTunesItem.IsChecked = !Saved.NoMiniPlayer;
             securityMenu.Header = "Security: " + Security.PresetName;
             for (int i = 0; i < securityPicks.Count; i++) securityPicks[i].IsChecked = i == Security.Preset;
             foreach (MenuItem item in securityToggles) item.IsChecked = Security.On((int)item.Tag);
@@ -2547,12 +2606,15 @@ namespace CapriDesktop
             hands.Click += delegate { AskHands(); };
             MenuItem kilo = new MenuItem { Header = KiloChoice };
             kilo.Click += delegate { AskKiloKey(); };
+            MenuItem own = new MenuItem { Header = "Her own brain (no Ollama)" };
+            own.Click += delegate { GetOwnBrain(); };
             MenuItem endpoint = new MenuItem { Header = EndpointChoice };
             endpoint.Click += delegate { AskEndpoint(); };
             brainMenu.Items.Add(free);
             brainMenu.Items.Add(paste);
             brainMenu.Items.Add(kilo);
             brainMenu.Items.Add(endpoint);
+            brainMenu.Items.Add(own);
             brainMenu.Items.Add(new Separator());
             brainMenu.Items.Add(hands);
         }
@@ -3273,7 +3335,6 @@ namespace CapriDesktop
         {
             Cloud remote = Brain.Remote;
             if (Brain.Model == null) return "My brain's offline, so I can't watch your screen yet.";
-            if (remote != null && remote.Kind == "deepseek") return "DeepSeek can't see, so I can't watch your screen. A free NVIDIA key can: " + Brain.FreeKeyHow + ".";
             if (remote != null && remote.Model == Brain.Unsighted) return remote.Model + " can't see screens. Pick one that can " + Brain.BrainMenu + (remote.Kind == "nvidia" ? ", like nvidia/nemotron-3.5-super-vl-120b-a12b." : ".");
             return null;
         }
@@ -3461,6 +3522,7 @@ namespace CapriDesktop
             if (text.Length == 0) return;
             if (text.Length > 240) text = text.Substring(0, 240);
             if (meeting.Asking) { Met(text); return; }
+            if (HearMini(text)) return;
             int ticket = ++asking;
             Brain.Cancel();
             voice.Stop();
@@ -3538,6 +3600,7 @@ namespace CapriDesktop
             get
             {
                 string picked = Speakers.Known(Saved.VoiceProvider);
+                if (picked == Speakers.Free) return FreeVoice;
                 return picked == Speakers.Local ? localVoice : picked == Speakers.Off ? (ISpeaker)noVoice : elevenLabs;
             }
         }
@@ -3584,6 +3647,7 @@ namespace CapriDesktop
                     shown[0] = true;
                     double seconds = wav == null ? 0 : Voice.Seconds(wav);
                     Talk.Answer(heard, said, seconds);
+                    if (seconds >= 0.2) voiceDoneAt = MoveClock + seconds + 0.5;
                     if (seconds >= 0.2) voice.Play(wav);
                     else TypeAlong(said, ticket);
                 });
@@ -4037,8 +4101,8 @@ namespace CapriDesktop
             voiceMenu.Items.Clear();
             string picked = Speakers.Known(Saved.VoiceProvider);
             MenuItem provider = new MenuItem { Header = "Provider: " + (picked == Speakers.Local ? localVoice.Name : picked == Speakers.Off ? "Off" : "ElevenLabs") };
-            string[] pickable = { Speakers.ElevenLabs, Speakers.Local, Speakers.Off };
-            string[] pickNames = { "ElevenLabs", localVoice.Name + " (OpenAI speech API)", "Off" };
+            string[] pickable = { Speakers.ElevenLabs, Speakers.Local, Speakers.Free, Speakers.Off };
+            string[] pickNames = { "ElevenLabs", localVoice.Name + " (OpenAI speech API)", "Free voice", "Off" };
             for (int i = 0; i < pickable.Length; i++)
             {
                 string one = pickable[i];
@@ -4197,6 +4261,15 @@ namespace CapriDesktop
         {
             if (quitting) return;
             quitting = true;
+            ClonesOff();
+            ClearInk();
+            StopChat();
+            CloseMinis();
+            if (ownBrain != null) ownBrain.Dispose();
+            if (freeVoice != null) freeVoice.Dispose();
+            watchTurn++;
+            if (clips != null) clips.Dispose();
+            if (miniTunes != null) miniTunes.Close();
             Desk.Close();
             if (frame != null) frame.Quit();
             Brain.Cancel();

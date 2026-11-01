@@ -233,7 +233,6 @@ namespace CapriDesktop
         private readonly System.Diagnostics.Stopwatch watch = System.Diagnostics.Stopwatch.StartNew();
         private PixelPoint tip;
         private double tapped = -1;
-        private bool passThrough;
         internal readonly CursorBolts Bolts = new CursorBolts();
 
         internal HerCursor()
@@ -244,7 +243,7 @@ namespace CapriDesktop
             Content = face;
             IsHitTestVisible = false;
             ticks.Tick += delegate { Step(); };
-            Opened += delegate { PassThrough(); };
+            Opened += delegate { Look.ClickThrough(this); };
         }
 
         internal static Bitmap Art
@@ -339,28 +338,5 @@ namespace CapriDesktop
                 graphics.DrawImage(picture, new Rect(0, 0, picture.PixelSize.Width, picture.PixelSize.Height), where);
             }
         }
-
-        // On X11 and XWayland an empty input shape lets every click fall through to the window under her pointer.
-        private void PassThrough()
-        {
-            if (passThrough || !OperatingSystem.IsLinux()) return;
-            try
-            {
-                IPlatformHandle handle = TryGetPlatformHandle();
-                if (handle == null) return;
-                IntPtr display = XOpenDisplay(IntPtr.Zero);
-                if (display == IntPtr.Zero) return;
-                XShapeCombineRectangles(display, handle.Handle, 2, 0, 0, IntPtr.Zero, 0, 0, 0);
-                XFlush(display);
-                XCloseDisplay(display);
-                passThrough = true;
-            }
-            catch (Exception) { }
-        }
-
-        [DllImport("libX11.so.6")] private static extern IntPtr XOpenDisplay(IntPtr name);
-        [DllImport("libX11.so.6")] private static extern int XCloseDisplay(IntPtr display);
-        [DllImport("libX11.so.6")] private static extern int XFlush(IntPtr display);
-        [DllImport("libXext.so.6")] private static extern void XShapeCombineRectangles(IntPtr display, IntPtr window, int kind, int x, int y, IntPtr rectangles, int count, int op, int ordering);
     }
 }

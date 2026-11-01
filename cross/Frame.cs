@@ -243,10 +243,14 @@ namespace CapriDesktop
         {
             Section(left, "VOICE");
             Readout(left, delegate { return pet.VoiceStatus; });
-            string[] names = { "ElevenLabs", "Local server", "Off" };
-            string[] providers = { Speakers.ElevenLabs, Speakers.Local, Speakers.Off };
+            string[] names = { "ElevenLabs", "Local server", "Free voice", "Off" };
+            string[] providers = { Speakers.ElevenLabs, Speakers.Local, Speakers.Free, Speakers.Off };
             Stepped(left, "Provider", names, delegate { return Array.IndexOf(providers, Speakers.Known(pet.Saved.VoiceProvider)); }, delegate(int at) { pet.SetVoiceProvider(providers[at]); Refresh(); });
             Switch(left, "Speak replies", delegate { return pet.Speaks; }, delegate(bool on) { pet.SetSpeak(on); Refresh(); });
+            Pressing(left, "Voice chat (Ctrl + Alt + V)", delegate { pet.ToggleChat(); });
+            Switch(left, "Listen for Hey Capri", delegate { return pet.Saved.HeyCapri; }, delegate(bool on) { pet.SetHeyCapri(on); });
+            string[] micNames = pet.MicNames;
+            if (micNames.Length > 1) Stepped(left, "Mic", micNames, delegate { return pet.MicPicked; }, delegate(int at) { pet.PickMic(at); });
             Pressing(left, "Use Capri's voice", delegate { pet.UseCapriVoice(); Refresh(); });
             Pressing(left, "Install Capri's voice...", delegate { pet.InstallCapriVoice(); });
             Pressing(left, "Local server's address...", delegate { pet.AskLocalVoice("url"); });
@@ -297,6 +301,8 @@ namespace CapriDesktop
             Section(right, "HABITS");
             Switch(right, OperatingSystem.IsMacOS() ? "Start with my Mac" : "Start with my PC", delegate { return pet.StartsAtLogin; }, delegate(bool on) { pet.SetLogin(on); });
             Switch(right, "Show on Discord", delegate { return !pet.Saved.NoDiscord; }, delegate(bool on) { pet.SetDiscord(on); });
+            Switch(right, "Mini player", delegate { return !pet.Saved.NoMiniPlayer; }, delegate(bool on) { if (on == pet.Saved.NoMiniPlayer) pet.ToggleMiniPlayer(); });
+            Switch(right, "Chaos when upset", delegate { return !pet.Saved.NoUpsetChaos; }, delegate(bool on) { if (on == pet.Saved.NoUpsetChaos) pet.ToggleUpsetChaos(); });
             Switch(right, "Remember our chats", delegate { return !pet.Saved.NoMemories; }, delegate(bool on) { pet.SetRemembering(on); });
             Pressing(right, "Open her notes", delegate { pet.OpenNotes(); });
         }

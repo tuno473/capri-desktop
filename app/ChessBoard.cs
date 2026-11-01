@@ -1,9 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+#if !CROSS
 using System.Drawing.Drawing2D;
+#endif
 using System.Text.RegularExpressions;
+#if !CROSS
 using System.Windows.Forms;
+#endif
 
 namespace CapriDesktop
 {
@@ -146,6 +150,7 @@ namespace CapriDesktop
         }
     }
 
+#if !CROSS
     internal sealed class ChessBoard : Overlay
     {
         internal const int Wide = 480, Tall = 634;
@@ -521,4 +526,5 @@ namespace CapriDesktop
             base.Dispose(disposing);
         }
     }
+#endif
 }

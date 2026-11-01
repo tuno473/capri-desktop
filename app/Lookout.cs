@@ -131,7 +131,11 @@ namespace CapriDesktop
                 if (jpeg == null || jpeg.Length == 0) throw new InvalidOperationException("No screen picture.");
                 byte[] pixels;
                 using (MemoryStream stream = new MemoryStream(jpeg))
+#if CROSS
+                pixels = Eyes.Small(jpeg, 480, 270);
+#else
                 using (Bitmap frame = new Bitmap(stream)) pixels = GameSense.Bgra(frame, 480, 270);
+#endif
                 if (pixels == null) throw new InvalidOperationException("No screen pixels.");
                 if (!force && Clock() - looked < 30000 && !Changed(previous, pixels)) return false;
                 StringBuilder system = new StringBuilder(Rules);
@@ -144,7 +148,11 @@ namespace CapriDesktop
                 int hit;
                 List<int> happening;
                 string reply = See(system.ToString(), "Check all these watches against the screen now.", jpeg);
+                #if CROSS
+                Action<string> trace = null;
+#else
                 Action<string> trace = Job.Trace;
+#endif
                 if (trace != null) trace("  watch -> " + reply);
                 string line = Read(reply, numbers, out hit, out happening);
                 lock (gate)
@@ -170,7 +178,11 @@ namespace CapriDesktop
             }
             catch (Exception error)
             {
+                #if CROSS
+                Action<string> broken = null;
+#else
                 Action<string> broken = Job.Trace;
+#endif
                 if (broken != null) broken("  watch failed: " + error.Message);
                 lock (gate)
                 {
@@ -247,6 +259,7 @@ namespace CapriDesktop
         }
     }
 
+#if !CROSS
     internal sealed partial class Companion
     {
         private readonly Lookout lookout = new Lookout();
@@ -296,4 +309,5 @@ namespace CapriDesktop
             if (IsHandleCreated) Native.SetWindowPos(Handle, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010);
         }
     }
+#endif
 }

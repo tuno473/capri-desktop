@@ -6,7 +6,9 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+#if !CROSS
 using System.Windows.Forms;
+#endif
 
 namespace CapriDesktop
 {
@@ -37,7 +39,11 @@ namespace CapriDesktop
         internal void Clear() { lines.Clear(); }
     }
 
+#if CROSS
+    internal sealed class WatchAlong
+#else
     internal sealed class WatchAlong : IDisposable
+#endif
     {
         internal const int DefaultLines = 24;
         internal const int AudioSeconds = 6;
@@ -55,6 +61,7 @@ namespace CapriDesktop
         internal const string NoEars = "My speech recognition isn't installed, so I can watch the picture but can't make out the PC's words. Get my free ears under VOICE in Mainframe.";
         internal const string NoEyes = "This brain can't see the picture, so I'll follow the PC's words. Pick a brain with eyes under BRAIN in Mainframe to watch the video too.";
         internal readonly WatchMemory Memory = new WatchMemory();
+#if !CROSS
         internal readonly Queue<string> Folds = new Queue<string>();
         internal Func<short[], string> Recognize = Hearing.Text;
         internal Func<bool> Speaking = delegate { return false; };
@@ -80,6 +87,8 @@ namespace CapriDesktop
         internal double QuietFor { get { return Now - Interlocked.CompareExchange(ref sounded, 0, 0); } }
         internal bool Ended(double now) { return now - MovedAt >= EndSeconds; }
 
+#endif
+
         // "Stop watching" only means this while she's watching with them.
         internal static Func<bool> Active = delegate { return false; };
 
@@ -99,6 +108,7 @@ namespace CapriDesktop
                 + "\nWindow: " + Voice.Quote(title ?? "") + "\nRecent PC transcript, oldest first, possibly misheard:\n" + (transcript.Length == 0 ? "(No words yet.)" : transcript);
         }
 
+#if !CROSS
         internal void Start()
         {
             Thread capture = new Thread(Capture);
@@ -226,8 +236,10 @@ namespace CapriDesktop
             AudioReply = null;
             Pending = Notice = null;
         }
+#endif
     }
 
+#if !CROSS
     internal sealed partial class Companion
     {
         private WatchAlong watchAlong;
@@ -467,4 +479,5 @@ namespace CapriDesktop
             });
         }
     }
+#endif
 }
