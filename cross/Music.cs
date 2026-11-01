@@ -97,7 +97,9 @@ namespace CapriDesktop
             return any.Success ? any.Value : null;
         }
 
-        private static string RunTool(string file, string[] args)
+        private static string RunTool(string file, string[] args) { return RunFor(file, args, 2000); }
+
+        internal static string RunFor(string file, string[] args, int wait)
         {
             try
             {
@@ -108,7 +110,7 @@ namespace CapriDesktop
                     if (process == null) return null;
                     Task<string> output = process.StandardOutput.ReadToEndAsync();
                     process.StandardError.ReadToEndAsync();
-                    if (!process.WaitForExit(2000))
+                    if (!process.WaitForExit(wait))
                     {
                         try { process.Kill(); }
                         catch (Exception) { }

@@ -35,6 +35,26 @@ namespace CapriDesktop
         private readonly ComboBox models = new ComboBox();
         private bool syncing;
         private string listedFor;
+        private readonly StackPanel screenPart = new StackPanel { IsVisible = false };
+        private readonly ComboBox screenPick = new ComboBox(), modePick = new ComboBox();
+        private readonly TextBlock screenLine = new TextBlock { Foreground = new SolidColorBrush(Cyan), FontSize = 12, Margin = new Thickness(8, 2, 8, 4), TextWrapping = TextWrapping.Wrap };
+        private readonly StackPanel screenAnswer = new StackPanel { IsVisible = false };
+        private readonly DispatcherTimer trialTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        private Grid screenRow;
+        private List<Display> displays = new List<Display>();
+        private Display trialOn;
+        private DisplayMode trialTo, trialWas;
+        private int trialLeft;
+        internal const int TrialSeconds = 15;
+        // Slow work off her window's thread, then the answer back on it.
+        internal static Action<Action, Action> Behind = delegate(Action work, Action done)
+        {
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                work();
+                Dispatcher.UIThread.Post(done);
+            });
+        };
 
         internal Frame(Pet pet)
         {
@@ -63,16 +83,27 @@ namespace CapriDesktop
             CapriRows();
             WatchRows();
             HabitRows();
+            ScreenRows();
             SecurityRows();
             // Closing it only hides it, so it opens again where they left it.
             Closing += delegate(object sender, WindowClosingEventArgs e) { if (!quitting) { e.Cancel = true; Hide(); } };
-            Opened += delegate { Refresh(); };
+            Opened += delegate { Refresh(); ListScreens(); };
         }
 
         private static string Status { get { return "v" + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString(3) + " · " + (OperatingSystem.IsMacOS() ? "Mac" : "Linux"); } }
 
         private bool quitting;
-        internal void Quit() { quitting = true; Close(); }
+        internal void Quit()
+        {
+            quitting = true;
+            if (trialOn != null)
+            {
+                trialTimer.Stop();
+                Displays.Change(trialOn, trialWas);
+                trialOn = null;
+            }
+            Close();
+        }
 
         // Every row reads its setting back from her, so the menu and this panel always agree.
         internal void Refresh()
@@ -158,6 +189,16 @@ namespace CapriDesktop
             return best;
         }
 
+        private static void Dress(ComboBox box)
+        {
+            box.HorizontalAlignment = HorizontalAlignment.Stretch;
+            box.Background = new SolidColorBrush(Field);
+            box.BorderBrush = new SolidColorBrush(Edge);
+            box.Foreground = new SolidColorBrush(White);
+            foreach (string look in new[] { "ComboBoxBackground", "ComboBoxBackgroundPointerOver", "ComboBoxBackgroundPressed", "ComboBoxBackgroundUnfocused", "ComboBoxDropDownBackground" }) box.Resources[look] = new SolidColorBrush(Field);
+            foreach (string look in new[] { "ComboBoxForeground", "ComboBoxForegroundFocused", "ComboBoxItemForeground" }) box.Resources[look] = new SolidColorBrush(White);
+        }
+
         private void BrainRows()
         {
             Section(left, "BRAIN");
@@ -168,12 +209,7 @@ namespace CapriDesktop
             refresh.Add(delegate { brainNow.Text = pet.BrainNow; });
             left.Children.Add(brainNow);
             Grid modelRow = Row(left, "Model");
-            models.HorizontalAlignment = HorizontalAlignment.Stretch;
-            models.Background = new SolidColorBrush(Field);
-            models.BorderBrush = new SolidColorBrush(Edge);
-            models.Foreground = new SolidColorBrush(White);
-            foreach (string look in new[] { "ComboBoxBackground", "ComboBoxBackgroundPointerOver", "ComboBoxBackgroundPressed", "ComboBoxBackgroundUnfocused", "ComboBoxDropDownBackground" }) models.Resources[look] = new SolidColorBrush(Field);
-            foreach (string look in new[] { "ComboBoxForeground", "ComboBoxForegroundFocused", "ComboBoxItemForeground" }) models.Resources[look] = new SolidColorBrush(White);
+            Dress(models);
             models.SelectionChanged += delegate
             {
                 string model = models.SelectedItem as string;
@@ -261,6 +297,160 @@ namespace CapriDesktop
             Switch(right, "Show on Discord", delegate { return !pet.Saved.NoDiscord; }, delegate(bool on) { pet.SetDiscord(on); });
             Switch(right, "Remember our chats", delegate { return !pet.Saved.NoMemories; }, delegate(bool on) { pet.SetRemembering(on); });
             Pressing(right, "Open her notes", delegate { pet.OpenNotes(); });
+        }
+
+        // Their screen's resolution, for desktops with a tool to change it. A new one only stays if they say so: if the screen
+        // went black or this panel fell off it they can't answer, so with no answer it goes back by itself.
+        private void ScreenRows()
+        {
+            Section(screenPart, "SCREEN");
+            screenRow = Row(screenPart, "Screen");
+            Dress(screenPick);
+            Second(screenRow, screenPick);
+            screenPick.SelectionChanged += delegate { if (!syncing) ListModes(); };
+            Grid modeRow = Row(screenPart, "Resolution");
+            Dress(modePick);
+            Second(modeRow, modePick);
+            modePick.SelectionChanged += delegate
+            {
+                string label = modePick.SelectedItem as string;
+                if (!syncing && label != null) PickScreen(label);
+            };
+            screenPart.Children.Add(screenLine);
+            Pressing(screenAnswer, "Keep it", delegate { KeepScreen(); });
+            Pressing(screenAnswer, "Go back now", delegate { BackScreen(); });
+            screenPart.Children.Add(screenAnswer);
+            trialTimer.Tick += delegate { TickScreen(); };
+            right.Children.Add(screenPart);
+        }
+
+        internal string ScreenLine { get { return screenLine.Text; } }
+        internal bool ScreenShown { get { return screenPart.IsVisible; } }
+        internal bool ScreenAsking { get { return screenAnswer.IsVisible; } }
+        internal string ScreenChoices { get { return string.Join(" | ", ToStrings(modePick.ItemsSource)); } }
+
+        private static List<string> ToStrings(System.Collections.IEnumerable items)
+        {
+            List<string> names = new List<string>();
+            if (items != null) foreach (object item in items) names.Add(item as string);
+            return names;
+        }
+
+        internal void ListScreens()
+        {
+            if (trialOn != null) return;
+            List<Display> read = null;
+            Behind(delegate { read = Displays.Read(); }, delegate
+            {
+                if (trialOn != null || read == null) return;
+                displays = read;
+                screenPart.IsVisible = displays.Count > 0;
+                string was = screenPick.SelectedItem as string;
+                List<string> names = new List<string>();
+                foreach (Display display in displays) names.Add(display.Name);
+                syncing = true;
+                screenPick.ItemsSource = names;
+                screenPick.SelectedItem = names.Contains(was) ? was : names.Count > 0 ? names[0] : null;
+                screenRow.IsVisible = names.Count > 1;
+                syncing = false;
+                ListModes();
+            });
+        }
+
+        private Display Shown()
+        {
+            string name = screenPick.SelectedItem as string;
+            foreach (Display display in displays) if (display.Name == name) return display;
+            return null;
+        }
+
+        private void ListModes()
+        {
+            Display display = Shown();
+            List<string> labels = new List<string>();
+            if (display != null) foreach (DisplayMode mode in display.Modes) labels.Add(mode.Label);
+            bool held = syncing;
+            syncing = true;
+            modePick.ItemsSource = labels;
+            modePick.SelectedItem = display == null ? null : display.Now.Label;
+            syncing = held;
+        }
+
+        private void Trying(bool busy)
+        {
+            screenPick.IsEnabled = !busy;
+            modePick.IsEnabled = !busy;
+        }
+
+        internal void PickScreen(string label)
+        {
+            Display display = Shown();
+            if (display == null || trialOn != null || label == display.Now.Label) return;
+            DisplayMode mode = display.Modes.Find(delegate(DisplayMode one) { return one.Label == label; });
+            if (mode == null) return;
+            DisplayMode was = display.Now;
+            bool took = false;
+            Trying(true);
+            screenLine.Text = "Changing to " + label + "...";
+            Behind(delegate { took = Displays.Change(display, mode); }, delegate
+            {
+                if (!took)
+                {
+                    screenLine.Text = "Your system didn't take " + label + ", so nothing changed.";
+                    Trying(false);
+                    ListScreens();
+                    return;
+                }
+                trialOn = display;
+                trialTo = mode;
+                trialWas = was;
+                trialLeft = TrialSeconds;
+                screenAnswer.IsVisible = true;
+                AskKeep();
+                trialTimer.Start();
+            });
+        }
+
+        private void AskKeep() { screenLine.Text = "Keep " + trialTo.Label + "? Going back to " + trialWas.Label + " in " + trialLeft + " s."; }
+
+        internal void TickScreen()
+        {
+            if (trialOn == null) return;
+            trialLeft--;
+            if (trialLeft <= 0) BackScreen();
+            else AskKeep();
+        }
+
+        private void EndTrial()
+        {
+            trialTimer.Stop();
+            trialOn = null;
+            screenAnswer.IsVisible = false;
+        }
+
+        internal void KeepScreen()
+        {
+            if (trialOn == null) return;
+            screenLine.Text = "Kept " + trialTo.Label + ".";
+            EndTrial();
+            Trying(false);
+            ListScreens();
+        }
+
+        internal void BackScreen()
+        {
+            if (trialOn == null) return;
+            Display display = trialOn;
+            DisplayMode was = trialWas;
+            bool took = false;
+            EndTrial();
+            screenLine.Text = "Going back to " + was.Label + "...";
+            Behind(delegate { took = Displays.Change(display, was); }, delegate
+            {
+                screenLine.Text = took ? "Went back to " + was.Label + "." : "Couldn't go back to " + was.Label + ". Change it in your system's display settings.";
+                Trying(false);
+                ListScreens();
+            });
         }
 
         private void SecurityRows()

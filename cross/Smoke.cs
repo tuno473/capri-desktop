@@ -5,6 +5,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls;
@@ -2037,6 +2038,69 @@ namespace CapriDesktop
             pet.Saved.Language = language;
             if (!shown || !picked) throw new Exception("Capri Mainframe went wrong: shown " + shown + ", picked " + picked + ", " + now);
             checks.Add("PASS Capri Mainframe: right-click > Capri Mainframe opens Windows' panel on Mac and Linux, with her brain, hands, voice, moves, watching, habits and Security, all the same settings as her menu");
+            ScreenChecks(panel);
+        }
+
+        // Her Mainframe's resolution row, against a made-up kscreen-doctor: nothing here touches a real screen.
+        private void ScreenChecks(Frame panel)
+        {
+            Func<string, string[], string> runWas = Displays.Run;
+            Func<string> kindWas = Displays.Kind;
+            Action<Action, Action> behindWas = Frame.Behind;
+            int settleWas = Displays.Settle;
+            string current = "1";
+            bool refuse = false;
+            List<string> asked = new List<string>();
+            string json = "{\"outputs\":[{\"name\":\"eDP-1\",\"connected\":true,\"enabled\":true,\"currentModeId\":\"#\",\"modes\":["
+                + "{\"id\":\"2\",\"size\":{\"width\":1280,\"height\":720},\"refreshRate\":59.9},{\"id\":\"1\",\"size\":{\"width\":1920,\"height\":1080},\"refreshRate\":144.0},{\"id\":\"3\",\"size\":{\"width\":1920,\"height\":1080},\"refreshRate\":60.0}]},"
+                + "{\"name\":\"HDMI-9\",\"connected\":false,\"enabled\":false,\"currentModeId\":\"\",\"modes\":[]}]}";
+            try
+            {
+                Displays.Settle = 0;
+                Frame.Behind = delegate(Action work, Action done) { work(); done(); };
+                Displays.Kind = delegate { return "kde"; };
+                Displays.Run = delegate(string file, string[] args)
+                {
+                    string line = file + " " + string.Join(" ", args);
+                    if (args[0] == "-j") return json.Replace("#", current);
+                    asked.Add(line);
+                    Match wanted = Regex.Match(line, @"^kscreen-doctor output\.eDP-1\.mode\.(\d+)$");
+                    if (wanted.Success && !refuse) current = wanted.Groups[1].Value;
+                    return "";
+                };
+                panel.ListScreens();
+                string listed = panel.ScreenChoices;
+                if (!panel.ScreenShown || listed != "1920 x 1080 · 144 Hz | 1920 x 1080 · 60 Hz | 1280 x 720 · 60 Hz") throw new Exception("Her resolution row listed: " + panel.ScreenShown + " " + listed);
+                panel.PickScreen("1280 x 720 · 60 Hz");
+                if (current != "2" || !panel.ScreenAsking || !panel.ScreenLine.StartsWith("Keep 1280 x 720", StringComparison.Ordinal)) throw new Exception("A new resolution didn't ask to stay: " + current + " " + panel.ScreenLine);
+                for (int i = 0; i < Frame.TrialSeconds; i++) panel.TickScreen();
+                if (current != "1" || panel.ScreenAsking || !panel.ScreenLine.StartsWith("Went back to 1920 x 1080", StringComparison.Ordinal)) throw new Exception("With no answer the resolution didn't go back: " + current + " " + panel.ScreenLine);
+                panel.PickScreen("1280 x 720 · 60 Hz");
+                panel.KeepScreen();
+                if (current != "2" || panel.ScreenAsking || panel.ScreenLine != "Kept 1280 x 720 · 60 Hz.") throw new Exception("Keep it didn't keep the resolution: " + current + " " + panel.ScreenLine);
+                panel.PickScreen("1920 x 1080 · 60 Hz");
+                panel.BackScreen();
+                if (current != "2") throw new Exception("Go back now didn't go back: " + current);
+                refuse = true;
+                panel.PickScreen("1920 x 1080 · 144 Hz");
+                if (current != "2" || panel.ScreenAsking || !panel.ScreenLine.Contains("didn't take")) throw new Exception("A refused resolution still asked to stay: " + panel.ScreenLine);
+                refuse = false;
+                List<Display> hypr = Displays.Hypr("[{\"name\":\"DP-1\",\"width\":2560,\"height\":1440,\"refreshRate\":164.96,\"x\":1920,\"y\":0,\"scale\":1.25,\"availableModes\":[\"1920x1080@60.00Hz\",\"2560x1440@164.96Hz\",\"2560x1440@60.00Hz\"]}]");
+                List<Display> x = Displays.X("Screen 0: minimum 8 x 8, current 1920 x 1080\nVGA-1 disconnected (normal)\nHDMI-1 connected primary 1920x1080+0+0 (normal) 0mm x 0mm\n   1920x1080     60.00*+  50.00  \n   1280x720      60.00  \nDP-2 connected (normal)\n   1024x768      60.00  \n");
+                if (hypr.Count != 1 || hypr[0].Now.Label != "2560 x 1440 · 165 Hz" || hypr[0].Place != "1920x0" || hypr[0].Scale != "1.25" || hypr[0].Modes.Count != 3) throw new Exception("hyprctl's screens read wrong.");
+                if (x.Count != 1 || x[0].Name != "HDMI-1" || x[0].Now.Label != "1920 x 1080 · 60 Hz" || x[0].Modes.Count != 3) throw new Exception("xrandr's screens read wrong.");
+                Displays.Kind = delegate { return null; };
+                panel.ListScreens();
+                if (panel.ScreenShown) throw new Exception("Her resolution row showed on a desktop with no tool for it.");
+            }
+            finally
+            {
+                Displays.Run = runWas;
+                Displays.Kind = kindWas;
+                Displays.Settle = settleWas;
+                Frame.Behind = behindWas;
+            }
+            checks.Add("PASS Mainframe's resolution: she lists each screen's sizes, a new one asks to stay and goes back by itself with no answer, Keep it keeps it, Go back now undoes it, a refused one changes nothing, KDE, Hyprland and X11 read right, and the row hides where there's no tool");
         }
 
         private void ServeSpeech(NetworkStream stream)
