@@ -9,7 +9,7 @@ namespace CapriDesktop
     internal static class Music
     {
         internal static Func<string, string[], string> Run = RunTool;
-        private static readonly Regex Players = new Regex(@"org\.mpris\.MediaPlayer2\.(spotify|rhythmbox|elisa|clementine|strawberry|audacious|lollypop|amberol|cmus|mpd|quodlibet|deadbeef|tauon|amarok|gnome-music|tidal|deezer|cider|youtube-music|ncspot|psst|g4music|musicpod|io\.bassi\.Amberol|com\.github\.th_ch\.youtube_music)[\w.\-]*", RegexOptions.IgnoreCase);
+        private static readonly Regex Players = new Regex(@"org\.mpris\.MediaPlayer2\.(spotify|crabytube|rhythmbox|elisa|clementine|strawberry|audacious|lollypop|amberol|cmus|mpd|quodlibet|deadbeef|tauon|amarok|gnome-music|tidal|deezer|cider|youtube-music|ncspot|psst|g4music|musicpod|io\.bassi\.Amberol|com\.github\.th_ch\.youtube_music)[\w.\-]*", RegexOptions.IgnoreCase);
         private static readonly string[] MacPlayers = { "Spotify", "Music" };
 
         internal static bool Playing()

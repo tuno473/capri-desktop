@@ -380,6 +380,23 @@ namespace CapriDesktop
                 }
                 finally { Music.Run = runWas; }
                 checks.Add("PASS music: Linux reads music players over D-Bus (not browsers), Mac asks Spotify and Music only when they're already running");
+                string crabyState = "Playing";
+                try
+                {
+                    Music.Run = delegate(string file, string[] args)
+                    {
+                        string line = file + " " + string.Join(" ", args);
+                        if (line.Contains("ListNames")) return "method return\n   array [\n      string \"org.mpris.MediaPlayer2.crabytube\"\n   ]\n";
+                        if (line.Contains("--dest=org.mpris.MediaPlayer2.crabytube") && line.Contains("PlaybackStatus")) return "method return\n   variant       string \"" + crabyState + "\"\n";
+                        return null;
+                    };
+                    bool crabyOn = Music.Linux();
+                    crabyState = "Paused";
+                    bool crabyOff = Music.Linux();
+                    if (!crabyOn || crabyOff) throw new Exception("CrabyTube didn't count as a music player: playing " + crabyOn + ", paused " + crabyOff);
+                }
+                finally { Music.Run = runWas; }
+                checks.Add("PASS CrabyTube counts as a music player while it plays, and stops counting when it pauses");
                 List<string> songsAsked = new List<string>();
                 try
                 {
