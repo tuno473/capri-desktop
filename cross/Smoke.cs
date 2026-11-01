@@ -638,7 +638,7 @@ namespace CapriDesktop
                 pet.ShowUpdate("{\"tag_name\":\"v0.0.1\"}");
                 string olderChoice = pet.UpdateChoice;
                 pet.ShowUpdate("not json");
-                bool oddTags = Pet.Newer("nightly", new Version(0, 7, 5)) == null && Pet.Newer("v0.7.5", new Version(0, 7, 5)) == null && Pet.Newer("0.7.10", new Version(0, 7, 9)) == "0.7.10" && Pet.Newer("v1.0", new Version(0, 7, 5)) == "1.0.0" && Pet.Newer("v0.7.6-beta", new Version(0, 7, 5)) == null;
+                bool oddTags = Pet.Newer("v0.7.8.2", new Version(0, 7, 8, 1)) == "0.7.8.2" && Pet.Newer("v0.7.8.1", new Version(0, 7, 8, 1)) == null && Pet.Newer("v0.7.8", new Version(0, 7, 8, 1)) == null && Pet.Newer("nightly", new Version(0, 7, 5)) == null && Pet.Newer("v0.7.5", new Version(0, 7, 5)) == null && Pet.Newer("0.7.10", new Version(0, 7, 9)) == "0.7.10" && Pet.Newer("v1.0", new Version(0, 7, 5)) == "1.0.0" && Pet.Newer("v0.7.6-beta", new Version(0, 7, 5)) == null;
                 pet.UpdateNews = null;
                 pet.Saved.UpdateSeen = null;
                 pet.Save();

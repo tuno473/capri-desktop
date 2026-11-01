@@ -905,9 +905,9 @@ namespace CapriDesktop
         internal static string Newer(string tag, Version mine)
         {
             Version found;
-            if (tag == null || !System.Text.RegularExpressions.Regex.IsMatch(tag, @"^[vV]?\d+\.\d+(\.\d+)?$") || !Version.TryParse(tag.TrimStart('v', 'V'), out found)) return null;
-            found = new Version(found.Major, found.Minor, Math.Max(0, found.Build));
-            return found > new Version(mine.Major, mine.Minor, Math.Max(0, mine.Build)) ? found.ToString(3) : null;
+            if (tag == null || !System.Text.RegularExpressions.Regex.IsMatch(tag, @"^[vV]?\d+\.\d+(\.\d+){0,2}$") || !Version.TryParse(tag.TrimStart('v', 'V'), out found)) return null;
+            found = new Version(found.Major, found.Minor, Math.Max(0, found.Build), Math.Max(0, found.Revision));
+            return found > new Version(mine.Major, mine.Minor, Math.Max(0, mine.Build), Math.Max(0, mine.Revision)) ? found.ToString(found.Revision > 0 ? 4 : 3) : null;
         }
 
         internal string UpdateChoice { get { return updateItem != null && ContextMenu != null && ContextMenu.Items.Contains(updateItem) ? updateItem.Header as string : null; } }
