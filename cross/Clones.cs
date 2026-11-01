@@ -447,12 +447,22 @@ namespace CapriDesktop
             Save();
         }
 
+        // Windows that aren't hers. X11 lists every window, so her clones' own glass would otherwise look like a full-screen game,
+        // and they'd haul themselves around.
+        private List<Spot> TheirWindows()
+        {
+            List<Spot> theirs = new List<Spot>(Desk.Windows(Ours()));
+            int self = Environment.ProcessId;
+            theirs.RemoveAll(delegate(Spot spot) { return spot.Pid == self; });
+            return theirs;
+        }
+
         // Full screen windows mean a game or a film, and they're left alone.
         private bool GameUp
         {
             get
             {
-                try { return Desk.Covering(Desk.Windows(new long[0])); }
+                try { return Desk.Covering(TheirWindows()); }
                 catch (Exception) { return false; }
             }
         }
@@ -503,7 +513,7 @@ namespace CapriDesktop
             opened.HandsFree = delegate { return Program.Smoke == null && !Chores.Running && !Busy; };
             opened.Cursor = Mouse;
             opened.Warp = WarpCursor;
-            opened.Grabbable = delegate { return Hands.Streaming || GameUp ? null : Desk.Windows(new long[0]); };
+            opened.Grabbable = delegate { return Hands.Streaming || GameUp ? null : TheirWindows(); };
             opened.Allowed = delegate { return !Hands.Streaming && !GameUp; };
             opened.Ticked = CloneTalk;
             cloneRoom = opened;

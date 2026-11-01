@@ -2446,7 +2446,7 @@ namespace CapriDesktop
             ChessPane chess = pet.ChessShown;
             if (chess == null || pet.Minis != null || !chess.IsVisible) throw new Exception("Chess didn't open.");
             chess.Play(0x14, 0x34, 0);
-            Pump(delegate { return chess.Game.Board.Turn == chess.Game.You && !chess.Busy; }, 15000);
+            Pump(delegate { chess.Poll(); return chess.Game.Board.Turn == chess.Game.You && !chess.Busy; }, 15000);
             if (chess.Game.Board.Turn != chess.Game.You || chess.Game.Board.Cells[0x34] == 0) throw new Exception("Chess didn't answer: " + chess.Game.Status + " / " + chess.Game.BoardText());
             Snap(chess, "chess.png");
             string text = chess.Game.BoardText();

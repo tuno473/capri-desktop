@@ -603,7 +603,10 @@ namespace CapriDesktop
             long[] shadow = Property(window, "_GTK_FRAME_EXTENTS");
             if (shadow != null && shadow.Length == 4) { left += (int)shadow[0]; right -= (int)shadow[1]; top += (int)shadow[2]; bottom -= (int)shadow[3]; }
             if (right <= left || bottom <= top) return null;
-            return Make(window.ToInt64(), new PixelRect(left, top, right - left, bottom - top), seat);
+            Spot found = Make(window.ToInt64(), new PixelRect(left, top, right - left, bottom - top), seat);
+            long[] process = Property(window, "_NET_WM_PID");
+            if (process != null && process.Length > 0) found.Pid = (int)process[0];
+            return found;
         }
     }
 

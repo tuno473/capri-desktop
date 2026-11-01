@@ -202,6 +202,9 @@ namespace CapriDesktop
 
         internal bool Busy { get { return work != null; } }
 
+        // Her timer's job, for anything that can't wait for it.
+        internal void Poll() { FinishWork(); }
+
         protected override void OnClosed(EventArgs e)
         {
             Cancel();
