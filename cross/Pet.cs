@@ -4167,6 +4167,7 @@ namespace CapriDesktop
         {
             if (quitting) return;
             quitting = true;
+            Desk.Close();
             if (frame != null) frame.Quit();
             Brain.Cancel();
             voice.Stop();
@@ -4182,6 +4183,7 @@ namespace CapriDesktop
 
         internal void Finish(int code)
         {
+            Desk.Close();
             if (frame != null) frame.Quit();
             frames.Stop();
             Talk.Dismiss();

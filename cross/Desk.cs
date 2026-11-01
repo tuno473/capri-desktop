@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
@@ -29,6 +30,7 @@ namespace CapriDesktop
                 if (OperatingSystem.IsWindows()) return new WindowsDesk();
                 if (OperatingSystem.IsMacOS()) return new MacDesk();
                 if (OperatingSystem.IsLinux() && HyprDesk.Socket() != null) return new HyprDesk();
+                if (KWinMouse.Here) return new KdeDesk();
                 if (OperatingSystem.IsLinux() && Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") == null && Environment.GetEnvironmentVariable("DISPLAY") != null) return new X11Desk();
             }
             catch (Exception) { }
@@ -41,6 +43,8 @@ namespace CapriDesktop
         internal abstract Spot Find(long window);
         internal abstract bool Alive(long window);
         internal virtual string Debug() { return ""; }
+        // She's closing, for a desk that left something running.
+        internal virtual void Close() { }
         // Where the mouse is on the whole desktop, in pixels, or null where the desktop won't say (Wayland).
         internal virtual PixelPoint? Pointer() { return null; }
 
@@ -611,6 +615,133 @@ namespace CapriDesktop
         {
             string reply = Ask("dispatch hl.dsp.window." + lua + "({ action = \"enable\", window = \"address:" + address + "\" })");
             if (reply.Trim() != "ok") Ask("dispatch " + classic + " address:" + address);
+        }
+    }
+
+    // KDE on Wayland: apps aren't told about other windows, but a KWin script is. A small script stays loaded in KWin and
+    // prints the windows it would show to the journal, only when they've changed, and she follows the journal for its tag, so
+    // asking where the windows are costs nothing while she's running. Positions are KWin's, which match hers at 100% scale.
+    internal sealed class KdeDesk : Desk
+    {
+        private const string Script = "capri-desk";
+        private readonly object gate = new object();
+        private readonly int own = Environment.ProcessId;
+        private readonly string tag = "CAPRIDESK" + Environment.ProcessId;
+        private readonly Dictionary<string, long> ids = new Dictionary<string, long>();
+        private List<Spot> latest = new List<Spot>();
+        private Process follower;
+        private string problem;
+
+        internal KdeDesk()
+        {
+            try
+            {
+                string path = Path.Combine(Path.GetTempPath(), "capri-desk-" + own + ".js");
+                File.WriteAllText(path, Source(tag));
+                Tool("dbus-send", "--session", "--print-reply", "--dest=org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.unloadScript", "string:" + Script);
+                ProcessStartInfo watch = new ProcessStartInfo("journalctl") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+                foreach (string arg in new[] { "--user", "-f", "-n", "0", "-o", "cat", "--grep", tag }) watch.ArgumentList.Add(arg);
+                follower = Process.Start(watch);
+                follower.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e) { if (e.Data != null) Read(e.Data); };
+                follower.BeginOutputReadLine();
+                follower.ErrorDataReceived += delegate { };
+                follower.BeginErrorReadLine();
+                string loaded = Tool("dbus-send", "--session", "--print-reply", "--dest=org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", "string:" + path, "string:" + Script);
+                System.Text.RegularExpressions.Match id = System.Text.RegularExpressions.Regex.Match(loaded ?? "", @"int32\s+(\d+)");
+                if (!id.Success) { problem = "KWin wouldn't load her script."; return; }
+                Tool("dbus-send", "--session", "--print-reply", "--dest=org.kde.KWin", "/Scripting/Script" + id.Groups[1].Value, "org.kde.kwin.Script.run");
+            }
+            catch (Exception error) { problem = error.Message; }
+        }
+
+        internal override string Name { get { return "KDE"; } }
+
+        internal override string Debug() { lock (gate) return problem ?? latest.Count + " windows from KWin"; }
+
+        private static string Tool(string file, params string[] args)
+        {
+            ProcessStartInfo start = new ProcessStartInfo(file) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            foreach (string arg in args) start.ArgumentList.Add(arg);
+            using (Process process = Process.Start(start))
+            {
+                if (process == null) return null;
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit(2000);
+                return output;
+            }
+        }
+
+        // One line a change: id,pid,x,y,width,height,seat for each window, bottom first, with nothing printed when it's the same.
+        internal static string Source(string tag)
+        {
+            // At the top level on purpose: a timer inside a function gets collected, and the updates stop after the first.
+            return "var capriLast = null;\n" +
+                "function capriDump() {\n" +
+                "  var out = [], list = workspace.stackingOrder;\n" +
+                "  for (var i = 0; i < list.length; i++) {\n" +
+                "    var w = list[i];\n" +
+                "    if ((!w.normalWindow && !w.dialog) || w.minimized || w.hidden || w.deleted) continue;\n" +
+                "    if (!w.onAllDesktops && w.desktops.map(function (d) { return d.id; }).indexOf(workspace.currentDesktop.id) < 0) continue;\n" +
+                "    if (w.activities.length > 0 && w.activities.indexOf(workspace.currentActivity) < 0) continue;\n" +
+                "    var g = w.frameGeometry, area = workspace.clientArea(KWin.MaximizeArea, w);\n" +
+                "    var seat = !w.fullScreen && !(g.width >= area.width && g.height >= area.height);\n" +
+                "    out.push([w.internalId, w.pid, Math.round(g.x), Math.round(g.y), Math.round(g.width), Math.round(g.height), seat ? 1 : 0].join(','));\n" +
+                "  }\n" +
+                "  var now = out.join(';');\n" +
+                "  if (now !== capriLast) { capriLast = now; print('" + tag + " ' + now); }\n" +
+                "}\n" +
+                "var capriTimer = new QTimer();\n" +
+                "capriTimer.interval = 300;\n" +
+                "capriTimer.timeout.connect(capriDump);\n" +
+                "capriTimer.start();\n" +
+                "capriDump();\n";
+        }
+
+        // Her own windows are left out, and the top window comes first, as the other desks give them.
+        internal void Read(string line)
+        {
+            int at = line.IndexOf(tag + " ", StringComparison.Ordinal);
+            if (at < 0) return;
+            List<Spot> found = new List<Spot>();
+            lock (gate)
+            {
+                foreach (string entry in line.Substring(at + tag.Length + 1).Split(';', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string[] part = entry.Split(',');
+                    int pid, x, y, wide, tall, seat;
+                    if (part.Length != 7 || !int.TryParse(part[1], out pid) || !int.TryParse(part[2], out x) || !int.TryParse(part[3], out y) || !int.TryParse(part[4], out wide) || !int.TryParse(part[5], out tall) || !int.TryParse(part[6], out seat)) continue;
+                    if (pid == own || wide <= 0 || tall <= 0) continue;
+                    long id;
+                    if (!ids.TryGetValue(part[0], out id)) { id = ids.Count + 1; ids[part[0]] = id; }
+                    found.Insert(0, Make(id, new PixelRect(x, y, wide, tall), seat == 1));
+                }
+                latest = found;
+            }
+        }
+
+        internal override List<Spot> Windows(ICollection<long> skip)
+        {
+            List<Spot> found = new List<Spot>();
+            lock (gate) foreach (Spot spot in latest) if (!skip.Contains(spot.Window)) found.Add(spot);
+            return found;
+        }
+
+        internal override Spot Find(long window)
+        {
+            lock (gate) foreach (Spot spot in latest) if (spot.Window == window) return spot;
+            return null;
+        }
+
+        internal override bool Alive(long window) { return Find(window) != null; }
+
+        internal override void Close()
+        {
+            try { Tool("dbus-send", "--session", "--print-reply", "--dest=org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.unloadScript", "string:" + Script); }
+            catch (Exception) { }
+            try { if (follower != null && !follower.HasExited) follower.Kill(); }
+            catch (Exception) { }
+            try { File.Delete(Path.Combine(Path.GetTempPath(), "capri-desk-" + own + ".js")); }
+            catch (Exception) { }
         }
     }
 

@@ -960,7 +960,7 @@ namespace CapriDesktop
                     if (pet.Hip.Y != pet.Seat.Y) throw new Exception("Her feet left the shelf while walking.");
                     return false;
                 }
-                if (!Sitting() || pet.Seat.Window != shelfSpot.Window || pet.Hip.X == hipBefore.X) throw new Exception("She didn't walk and sit back down on the shelf.");
+                if (!Sitting() || pet.Seat.Window != shelfSpot.Window || pet.Hip.X == hipBefore.X) throw new Exception("She didn't walk and sit back down on the shelf: sitting " + Sitting() + ", seat " + (pet.Seat == null ? "none" : pet.Seat.Window + " " + pet.Seat.Bounds) + ", shelf " + shelfSpot.Window + " " + shelfSpot.Bounds + ", hip " + pet.Hip + " from " + hipBefore + ", falling " + pet.Falling);
                 checks.Add("PASS walking: she gets up, walks along her window with her feet on it, and sits back down " + Math.Abs(pet.Hip.X - hipBefore.X) + " px away");
                 hipBefore = pet.Hip;
                 if (!pet.Blink() || !pet.Leaving) throw new Exception("She couldn't teleport along the shelf.");
@@ -1730,6 +1730,8 @@ namespace CapriDesktop
             Chores.Track = delegate(double x, double y) { glided.Add(new[] { x, y }); };
             Chores.Parked = delegate { parked++; };
             Chores.Mouse = delegate { return new[] { 0.25, 0.25 }; };
+            // Doing stands in for her mouse, so this works where there's no /dev/uinput, like CI.
+            Chores.Doing = delegate { };
             try
             {
                 Chores.Glide(0.75, 0.6);
@@ -1737,6 +1739,7 @@ namespace CapriDesktop
             }
             finally
             {
+                Chores.Doing = null;
                 Chores.Track = trackWas;
                 Chores.Parked = parkedWas;
                 Chores.Mouse = mouseWas;
