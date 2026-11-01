@@ -2214,7 +2214,7 @@ namespace CapriDesktop
             if (quiet != null || line == null || line.Length < MicFeed.Rate || clicked != null) throw new Exception("Her ears cut lines wrongly: " + (line == null ? "none" : line.Length.ToString()) + " / " + (clicked != null));
             string[] pulse = LinuxMic.Command(delegate { return true; }), alsa = LinuxMic.Command(delegate(string tool) { return tool == "arecord"; });
             if (pulse[0] != "parecord" || alsa[0] != "arecord" || LinuxMic.Command(delegate { return false; }) != null) throw new Exception("Her mic picked the wrong recorder.");
-            if (Parakeet.Spoken("es", "de") != "es" || Parakeet.Spoken("en", "es") != "es" || Parakeet.Spoken("en", null) != "en") throw new Exception("Her ears picked the wrong language.");
+            if (Parakeet.Spoken("es", "de") != "es" || Parakeet.Spoken("en", "es") != "es" || Parakeet.Spoken("en", null) != "en" || Parakeet.Spoken("en", "iv") != "en" || Parakeet.Spoken("en", "zh") != "en") throw new Exception("Her ears picked the wrong language.");
             Parakeet ears = new Parakeet(Program.Smoke) { Language = "es" };
             bool spanish = ears.Model == Parakeet.European;
             ears.Language = "en";
@@ -2461,7 +2461,10 @@ namespace CapriDesktop
             ToolArguments args;
             if (!Hands.Heard("watch this with me", out tool, out args) || tool != "watch_along") throw new Exception("Watching together didn't reach her: " + tool);
             string started = pet.Together("start"), again = pet.Together("start"), stopped = pet.Together("stop");
-            if (again != "I'm already watching with you." || stopped != "Okay, I'll stop watching." || pet.WatchingAlong) throw new Exception("Watching together went wrong: " + started + " / " + again);
+            // A Mac can't hear the PC, so with no brain to see either she says so and doesn't start.
+            bool blindMac = OperatingSystem.IsMacOS() && pet.Brain.Model == null;
+            bool watched = blindMac ? again == started && stopped == "We're not watching anything." : again == "I'm already watching with you." && stopped == "Okay, I'll stop watching.";
+            if (!watched || pet.WatchingAlong) throw new Exception("Watching together went wrong: " + started + " / " + again + " / " + stopped);
             if (!Hands.Heard("turn on gaming mode", out tool, out args) || tool != "gaming_mode") throw new Exception("Gaming Mode didn't reach her: " + tool);
             if (!Hands.Heard("clip that", out tool, out args) && tool != null && tool == "clip") throw new Exception("Clip words went wrong.");
             string[] words = ClipRecorder.Arguments("/x", "wayland"), x11 = ClipRecorder.Arguments("/x", "x11");

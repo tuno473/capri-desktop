@@ -455,8 +455,13 @@ namespace CapriDesktop
             }
         }
 
-        // The language they'll speak: hers, unless she's on English and the computer isn't, which makes English just her default.
-        internal static string Spoken(string capri, string computer) { return capri != "en" || string.IsNullOrEmpty(computer) ? capri : computer.ToLowerInvariant(); }
+        // The language they'll speak: hers, unless she's on English and the computer's on another she can hear, which makes
+        // English just her default. A computer with no language set says "iv", and one she can't hear shouldn't take her ears away.
+        internal static string Spoken(string capri, string computer)
+        {
+            string theirs = (computer ?? "").ToLowerInvariant();
+            return capri != "en" || Array.IndexOf(Heard, theirs) < 0 ? capri : theirs;
+        }
 
         internal void Install(Action<string, long, long> progress)
         {
