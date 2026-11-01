@@ -3571,7 +3571,8 @@ namespace CapriDesktop
             ComeBack();
             Talk.AskKey(BrainKeyHeard, "Paste your Kilo Code API key and press Enter. It's at the bottom of Your Profile on app.kilo.ai, and it stays on this computer.", delegate(string key)
             {
-                key = (key ?? "").Trim();
+                // A JWT never has spaces or line breaks, but one copied from a web page can pick some up.
+                key = System.Text.RegularExpressions.Regex.Replace(key ?? "", @"\s+", "");
                 if (key.Length == 0) return;
                 SaveBrainKey(key.StartsWith(Brain.KiloMark, StringComparison.Ordinal) ? key : Brain.KiloMark + key);
             });
@@ -3582,6 +3583,7 @@ namespace CapriDesktop
         {
             key = (key ?? "").Trim();
             if (key.Length == 0) return;
+            if (Cloud.KindOf(key) == "kilo") key = System.Text.RegularExpressions.Regex.Replace(key, @"\s+", "");
             string kind = Cloud.KindOf(key);
             if (kind == null) { Talk.Answer(BrainKeyHeard, NotAKey); return; }
             int ticket = ++asking;

@@ -370,7 +370,13 @@ namespace CapriDesktop
                 HttpWebResponse response = error.Response as HttpWebResponse;
                 if (response == null) throw new BrainException("Couldn't reach Kilo Code. Check your internet, then paste the key again.", true);
                 int status = (int)response.StatusCode;
+                string said = "";
+                try { using (StreamReader reader = new StreamReader(response.GetResponseStream())) said = reader.ReadToEnd(); }
+                catch (IOException) { }
                 response.Close();
+                // Never the key itself: its length, how many dot-separated parts it has (a JWT has 3) and its first letters.
+                string token = key.StartsWith(KiloMark, StringComparison.Ordinal) ? key.Substring(KiloMark.Length) : key;
+                Log(Kilo + "/chat/completions", -1, "HTTP " + status + " " + Regex.Replace(said, @"\s+", " ").Trim() + " | key " + token.Length + " characters, " + token.Split('.').Length + " parts, starts " + (token.Length >= 3 ? token.Substring(0, 3) : token));
                 if (status == 401 || status == 403) throw new BrainException("Kilo Code turned down that key. Copy it again from app.kilo.ai, under Your Profile.", true);
             }
         }
