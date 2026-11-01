@@ -26,6 +26,40 @@ if ($LASTEXITCODE -ne 0) { throw 'Capri compilation failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
 Write-Output "Built $app and $setup"
 if (-not $SmokeTest) { return }
+# GitHub's Windows has a 1024 x 768 screen, and Windows won't make a window bigger than its screen, so her windows at 150% and 200% came out cut off and failed their layout checks.
+if ($env:GITHUB_ACTIONS -eq 'true') {
+    Add-Type -TypeDefinition @'
+using System.Runtime.InteropServices;
+public static class CapriScreen {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct Mode {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string Device;
+        public short Spec, Driver, Size, Extra;
+        public int Fields, X, Y, Orientation, Fixed;
+        public short Color, Duplex, YResolution, TTOption, Collate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string Form;
+        public short LogPixels;
+        public int Bits, Width, Height, Flags, Frequency, Icm, Intent, Media, Dither, Reserved1, Reserved2, PanWidth, PanHeight;
+    }
+    [DllImport("user32.dll", CharSet = CharSet.Ansi)] static extern bool EnumDisplaySettings(string device, int index, ref Mode mode);
+    [DllImport("user32.dll", CharSet = CharSet.Ansi)] static extern int ChangeDisplaySettings(ref Mode mode, int flags);
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
+    public static string Now { get { return GetSystemMetrics(0) + " x " + GetSystemMetrics(1); } }
+    public static int Set(int width, int height) {
+        Mode mode = new Mode();
+        mode.Size = (short)Marshal.SizeOf(typeof(Mode));
+        if (!EnumDisplaySettings(null, -1, ref mode)) return -100;
+        mode.Width = width;
+        mode.Height = height;
+        mode.Fields = 0x80000 | 0x100000;
+        return ChangeDisplaySettings(ref mode, 1);
+    }
+}
+'@
+    $was = [CapriScreen]::Now
+    $answer = [CapriScreen]::Set(1920, 1080)
+    Write-Output "Screen for the smoke test: $was, now $([CapriScreen]::Now) (Windows answered $answer)"
+}
 $runtime = Join-Path $out 'smoke\runtime'
 $package = Join-Path $out 'smoke\package'
 $check = Start-Process -FilePath $app -ArgumentList @('--smoke-test', ('"' + $runtime + '"')) -PassThru -WindowStyle Hidden
