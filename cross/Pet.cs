@@ -183,6 +183,7 @@ namespace CapriDesktop
         internal const string NoOllama = "Ollama isn't running. Install it from ollama.com and open it.";
         private const string FreeKeyPage = "https://build.nvidia.com/settings/api-keys";
         internal const string KeyChoice = "Use an API key...";
+        internal const string KiloChoice = "Use a Kilo Code key...";
         internal const string NotAKey = "That doesn't look like an NVIDIA, OpenAI, Claude or DeepSeek key. NVIDIA's start with nvapi-.";
         internal const string FreeKeySteps = "Make a key on NVIDIA's page and copy it. Then right-click me > Brain > " + KeyChoice + " and paste it.";
         internal const string DiscordPage = "https://discord.gg/F4fDHfGtFk";
@@ -2479,8 +2480,11 @@ namespace CapriDesktop
             free.Click += delegate { GetFreeKey(); };
             MenuItem paste = new MenuItem { Header = KeyChoice };
             paste.Click += delegate { AskBrainKey(); };
+            MenuItem kilo = new MenuItem { Header = KiloChoice };
+            kilo.Click += delegate { AskKiloKey(); };
             brainMenu.Items.Add(free);
             brainMenu.Items.Add(paste);
+            brainMenu.Items.Add(kilo);
         }
 
         private string Pulling { get { return "Downloading " + pullingName + (pulled >= 0 ? ": " + pulled + "%" : "..."); } }
@@ -3558,7 +3562,19 @@ namespace CapriDesktop
         internal void AskBrainKey()
         {
             ComeBack();
-            Talk.AskKey(BrainKeyHeard, "Paste your NVIDIA, OpenAI, Claude or DeepSeek API key and press Enter. It stays on this computer. A free NVIDIA key works.", SaveBrainKey);
+            Talk.AskKey(BrainKeyHeard, "Paste your NVIDIA, OpenAI, Claude, DeepSeek, Gemini, OpenRouter or Kilo Code API key and press Enter. It stays on this computer. A free NVIDIA key works.", SaveBrainKey);
+        }
+
+        // Kilo Code's keys have no prefix of their own, so this box marks the key it gets as one.
+        internal void AskKiloKey()
+        {
+            ComeBack();
+            Talk.AskKey(BrainKeyHeard, "Paste your Kilo Code API key and press Enter. It's at the bottom of Your Profile on app.kilo.ai, and it stays on this computer.", delegate(string key)
+            {
+                key = (key ?? "").Trim();
+                if (key.Length == 0) return;
+                SaveBrainKey(key.StartsWith(Brain.KiloMark, StringComparison.Ordinal) ? key : Brain.KiloMark + key);
+            });
         }
 
         // A key she checks by reading its models, then thinks with on its best chat model until they pick another under Brain.
@@ -3575,7 +3591,11 @@ namespace CapriDesktop
                 List<string> found = null;
                 string problem = null;
                 string company = new Cloud(key, null).Company;
-                try { found = Brain.CloudModels(key); }
+                try
+                {
+                    if (kind == "kilo") Brain.CheckKilo(key);
+                    found = Brain.CloudModels(key);
+                }
                 catch (BrainException error) { problem = error.Message; }
                 catch (Exception error) { Brain.Log(company + " models", -1, error.Message); problem = "Couldn't reach " + company + ". Check your internet, then paste the key again."; }
                 Dispatcher.UIThread.Post(delegate

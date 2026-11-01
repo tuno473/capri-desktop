@@ -297,15 +297,17 @@ namespace CapriDesktop
         internal bool Claude { get { return Kind == "anthropic"; } }
         internal string Name { get { return Kind == "local" ? Brain.ServerName(Port) : Kind == "anthropic" ? "Claude" : Kind == "google" ? "Gemini" : Kind == "openai" ? "ChatGPT" : Company; } }
         internal string Company { get { return Kind == "local" ? Name : CompanyOf(Kind); } }
-        internal static string CompanyOf(string kind) { return kind == "anthropic" ? "Anthropic" : kind == "deepseek" ? "DeepSeek" : kind == "nvidia" ? "NVIDIA" : kind == "google" ? "Google AI" : kind == "openrouter" ? "OpenRouter" : kind == "openai" ? "OpenAI" : "That provider"; }
+        internal static string CompanyOf(string kind) { return kind == "anthropic" ? "Anthropic" : kind == "deepseek" ? "DeepSeek" : kind == "nvidia" ? "NVIDIA" : kind == "google" ? "Google AI" : kind == "openrouter" ? "OpenRouter" : kind == "kilo" ? "Kilo Code" : kind == "openai" ? "OpenAI" : "That provider"; }
         internal string Source { get { return Kind + (Kind == "local" ? "|" + Host : "") + "|" + Model; } }
-        internal string Sight { get { return Kind == "local" || Kind == "google" || Kind == "openrouter" ? Source : Model; } }
+        internal string Sight { get { return Kind == "local" || Kind == "google" || Brain.Routed(Kind) ? Source : Model; } }
 
         internal static string KindOf(string key)
         {
             if (string.IsNullOrEmpty(key)) return null;
             if (key.StartsWith("AIza", StringComparison.Ordinal)) return "google";
             if (key.StartsWith("sk-or-", StringComparison.Ordinal)) return "openrouter";
+            // Kilo Code's keys have no prefix of their own: Brain > Use a Kilo Code key marks them, and its JWTs are taken too.
+            if (key.StartsWith(Brain.KiloMark, StringComparison.Ordinal) || key.StartsWith("eyJ", StringComparison.Ordinal)) return "kilo";
             if (key.StartsWith("sk-nous-", StringComparison.Ordinal)) return null;
             if (key.StartsWith("sk-ant-", StringComparison.Ordinal)) return "anthropic";
             if (key.StartsWith("nvapi-", StringComparison.Ordinal)) return "nvidia";
@@ -341,6 +343,37 @@ namespace CapriDesktop
         internal static string Nvidia = "https://integrate.api.nvidia.com";
         internal static string Google = "https://generativelanguage.googleapis.com/v1beta/openai";
         internal static string OpenRouter = "https://openrouter.ai/api/v1";
+        // Kilo Code's gateway: OpenRouter's API and model names, behind a Kilo Code key.
+        internal static string Kilo = "https://ai-gateway.kilo.ai/api/v1";
+        internal const string KiloMark = "kilo:";
+        internal const string KiloFree = "kilo-auto/free";
+
+        // Kilo Code's gateway lists the same models as OpenRouter, with free ones, pictures and tools marked the same way.
+        internal static bool Routed(string kind) { return kind == "openrouter" || kind == "kilo"; }
+
+        // Kilo Code lists its models to anyone, so a key is only checked by a one-token reply from its free model.
+        internal static void CheckKilo(string key)
+        {
+            HttpWebRequest request = Create(Kilo + "/chat/completions", 30000);
+            request.Method = "POST";
+            request.ContentType = "application/json";
+            Sign(request, key, false);
+            byte[] body = Encoding.UTF8.GetBytes("{\"model\":\"" + KiloFree + "\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1}");
+            request.ContentLength = body.Length;
+            try
+            {
+                using (Stream upload = request.GetRequestStream()) upload.Write(body, 0, body.Length);
+                using (WebResponse response = request.GetResponse()) { }
+            }
+            catch (WebException error)
+            {
+                HttpWebResponse response = error.Response as HttpWebResponse;
+                if (response == null) throw new BrainException("Couldn't reach Kilo Code. Check your internet, then paste the key again.", true);
+                int status = (int)response.StatusCode;
+                response.Close();
+                if (status == 401 || status == 403) throw new BrainException("Kilo Code turned down that key. Copy it again from app.kilo.ai, under Your Profile.", true);
+            }
+        }
         private static readonly string[] NvidiaPicks = { "nvidia/nemotron-3.5-super-vl-120b-a12b", "nvidia/nemotron-3.5-bolt-e4b", "openai/gpt-oss-20b", "meta/llama-3.2-11b-vision-instruct" };
         // Marked recommended at the top of an NVIDIA key's models: Nemotron Super, which sees screens, and Nemotron's reasoning model.
         private static readonly string[] NvidiaRecommended = { "nvidia/nemotron-3.5-super-vl-120b-a12b", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning" };
@@ -1198,12 +1231,12 @@ namespace CapriDesktop
 
         private static bool Images(CloudModel model) { return model != null && model.Architecture != null && model.Architecture.Input != null && Array.IndexOf(model.Architecture.Input, "image") >= 0; }
         private static bool Tools(CloudModel model) { return model != null && model.Parameters != null && Array.IndexOf(model.Parameters, "tools") >= 0; }
-        internal static bool HasTools(Cloud remote) { return remote == null || remote.Kind != "openrouter" || Tools(Listed(remote.Kind, remote.Model)); }
+        internal static bool HasTools(Cloud remote) { return remote == null || !Routed(remote.Kind) || Tools(Listed(remote.Kind, remote.Model)); }
 
         internal bool Sighted(Cloud remote)
         {
             if (Unsighted == remote.Sight) return false;
-            if (remote.Kind == "openrouter") return Images(Listed(remote.Kind, remote.Model));
+            if (Routed(remote.Kind)) return Images(Listed(remote.Kind, remote.Model));
             bool sees;
             lock (serverEyes) return remote.Kind != "local" || !serverEyes.TryGetValue(remote.Source, out sees) || sees;
         }
@@ -1332,13 +1365,13 @@ namespace CapriDesktop
             {
                 if (model == null || string.IsNullOrWhiteSpace(model.Id) || !Chats(kind, model.Id) || found.Exists(knownModel => knownModel.Id == model.Id)) continue;
                 if (kind == "nvidia" && Array.IndexOf(NvidiaDead, model.Id) >= 0) continue;
-                if (kind == "openrouter" && model.Architecture != null && model.Architecture.Input != null && Array.IndexOf(model.Architecture.Input, "text") < 0) continue;
-                if (kind == "openrouter" && model.Architecture != null && model.Architecture.Output != null && Array.IndexOf(model.Architecture.Output, "text") < 0) continue;
+                if (Routed(kind) && model.Architecture != null && model.Architecture.Input != null && Array.IndexOf(model.Architecture.Input, "text") < 0) continue;
+                if (Routed(kind) && model.Architecture != null && model.Architecture.Output != null && Array.IndexOf(model.Architecture.Output, "text") < 0) continue;
                 found.Add(model);
             }
             found.Sort(delegate(CloudModel a, CloudModel b)
             {
-                int order = kind == "nvidia" ? Pick(a.Id).CompareTo(Pick(b.Id)) : kind == "openrouter" ? RouterPick(a).CompareTo(RouterPick(b)) : kind == "google" ? FlashPick(a.Id).CompareTo(FlashPick(b.Id)) : 0;
+                int order = kind == "nvidia" ? Pick(a.Id).CompareTo(Pick(b.Id)) : Routed(kind) ? RouterPick(a).CompareTo(RouterPick(b)) : kind == "google" ? FlashPick(a.Id).CompareTo(FlashPick(b.Id)) : 0;
                 if (order == 0 && kind == "google") order = GeminiVersion(b.Id).CompareTo(GeminiVersion(a.Id));
                 if (order == 0) order = string.CompareOrdinal(b.CreatedAt ?? "", a.CreatedAt ?? "");
                 if (order == 0) order = b.Created.CompareTo(a.Created);
@@ -1403,6 +1436,7 @@ namespace CapriDesktop
             if (kind == "nvidia") return Nvidia + "/v1" + path;
             if (kind == "google") return Google + path;
             if (kind == "openrouter") return OpenRouter + path;
+            if (kind == "kilo") return Kilo + path;
             if (kind == "openai") return OpenAi + "/v1" + path;
             throw new BrainException("That key's provider isn't supported.", true);
         }
@@ -1433,7 +1467,7 @@ namespace CapriDesktop
                     if (FlashPick(flashCandidate) < FlashPick(flash) || (FlashPick(flashCandidate) == FlashPick(flash) && GeminiVersion(flashCandidate).CompareTo(GeminiVersion(flash)) > 0)) flash = flashCandidate;
                 return flash;
             }
-            if (kind == "openrouter")
+            if (Routed(kind))
             {
                 string free = models[0];
                 foreach (string freeCandidate in models)
@@ -1447,7 +1481,8 @@ namespace CapriDesktop
         private static void Sign(HttpWebRequest request, string key, bool claude)
         {
             request.AllowAutoRedirect = false;
-            if (Cloud.KindOf(key) == "openrouter") request.Headers["X-Title"] = "Capri";
+            if (Routed(Cloud.KindOf(key))) request.Headers["X-Title"] = "Capri";
+            if (key.StartsWith(KiloMark, StringComparison.Ordinal)) key = key.Substring(KiloMark.Length);
             if (!claude) { request.Headers["Authorization"] = "Bearer " + key; return; }
             request.Headers["x-api-key"] = key;
             request.Headers["anthropic-version"] = "2026-10-21";

@@ -291,6 +291,7 @@ namespace CapriDesktop
                 checks.Add("PASS voice layers: Settings > Voice style > Layers turns on two copies of her under her, like Windows, with Layer 1 and Layer 2's pitch and delay in their own menus; " + layersFound + "; her ElevenLabs replies get them and come back 25 ms longer for their tails; off out of the box and in settings from before them, and off her voice is byte for byte as it was; the layers save and load as set");
                 LocalVoiceChecks();
                 BrainServerChecks();
+                KiloChecks();
                 ChoresChecks();
                 bool loginNew = !pet.StartsAtLogin;
                 pet.SetLogin(true);
@@ -591,7 +592,7 @@ namespace CapriDesktop
                 bool cloudGone = pet.Brain.Remote == null && pet.Saved.CloudModel == null && !File.Exists(Path.Combine(folder, "brain-key"));
                 pet.Brain.Model = "qwen3:8b";
                 pet.Talk.Dismiss();
-                if (ollamaMenu != "*qwen3:8b | - | Download a model (Ollama or Hugging Face)... | Use my own server (OpenAI API)... | - | Get a free NVIDIA key | " + Pet.KeyChoice) throw new Exception("The Brain menu didn't offer a cloud key: " + ollamaMenu);
+                if (ollamaMenu != "*qwen3:8b | - | Download a model (Ollama or Hugging Face)... | Use my own server (OpenAI API)... | - | Get a free NVIDIA key | " + Pet.KeyChoice + " | " + Pet.KiloChoice) throw new Exception("The Brain menu didn't offer a cloud key: " + ollamaMenu);
                 if (freeKey != Pet.FreeKeySteps || !keyAsked || notKey != Pet.NotAKey || !keyHidden) throw new Exception("The key choices didn't say where to paste, ask in a hidden box or explain a bad key: " + freeKey + " | " + keyAsked + " | " + notKey + " | " + keyHidden);
                 if (cloudMenu != "NVIDIA key ending 1234 (off) | *meta/llama-3.3-70b-instruct | qwen/qwen3-235b-a22b | - | Stay on my model | Forget the key and use Ollama" || !cloudPicked || !cloudGone || !cloudDetails || !hopped || !hopsEnd
                     || nvidiaMenu != "NVIDIA key ending 1234 (off) | *nvidia/nemotron-3.5-super-vl-120b-a12b · recommended | nvidia/nemotron-3.5-bolt-e4b | openai/gpt-oss-20b | - | *Stay on my model | Forget the key and use Ollama")
@@ -1739,6 +1740,96 @@ namespace CapriDesktop
             fail("rules follow SECURITY", Chores.Allowed == Chores.Rules && blackwall.IndexOf("Type passwords", StringComparison.Ordinal) > 0 && blackwall.IndexOf("Never", StringComparison.Ordinal) < 0);
             if (wrong.Count > 0) throw new Exception("Her mouse and keyboard jobs went wrong: " + string.Join(", ", wrong) + " / " + result + " / " + string.Join(" | ", done.ToArray()) + " / " + replied);
             checks.Add("PASS mouse and keyboard jobs: on Linux use_computer sends her brain the screenshot and the steps so far, takes one JSON step back even wrapped in words, clicks, types and presses keys through her own uinput mouse and keyboard until the brain says done, and never types a card number; her own pointer, her artist's cursor with electricity like Windows', glides on a human path to each target while their mouse stays put, borrowing it only for the click, and parks when the job ends");
+        }
+
+        // Kilo Code keys: marked by Brain > Use a Kilo Code key (or a JWT pasted in the usual box), sent without the mark as a
+        // bearer token to Kilo's gateway, checked with a one-token reply since its model list is open, and their models picked
+        // like OpenRouter's: free ones that see and use tools first.
+        private void KiloChecks()
+        {
+            List<string> wrong = new List<string>();
+            Func<string, bool, string> fail = delegate(string what, bool ok) { if (!ok) wrong.Add(what); return what; };
+            fail("keys", Cloud.KindOf(Brain.KiloMark + "abc123") == "kilo" && Cloud.KindOf("eyJhbGciOiJIUzI1NiJ9.e30.x") == "kilo" && Cloud.KindOf("sk-or-v1-x") == "openrouter" && Cloud.KindOf("nvapi-x") == "nvidia" && Cloud.KindOf("abc123") == null
+                && new Cloud(Brain.KiloMark + "abc123", "kilo-auto/free").Company == "Kilo Code" && Brain.Address("kilo", "/chat/completions") == "https://ai-gateway.kilo.ai/api/v1/chat/completions");
+            string catalog = "{\"data\":[{\"id\":\"paid/vision\",\"architecture\":{\"input_modalities\":[\"text\",\"image\"],\"output_modalities\":[\"text\"]},\"supported_parameters\":[\"tools\"]},"
+                + "{\"id\":\"music/maker\",\"architecture\":{\"input_modalities\":[\"text\"],\"output_modalities\":[\"audio\"]}},"
+                + "{\"id\":\"text/only:free\",\"architecture\":{\"input_modalities\":[\"text\"],\"output_modalities\":[\"text\"]},\"supported_parameters\":[\"tools\"]},"
+                + "{\"id\":\"nvidia/nemotron-3.5-super-vl:free\",\"architecture\":{\"input_modalities\":[\"text\",\"image\"],\"output_modalities\":[\"text\"]},\"supported_parameters\":[\"tools\"]}]}";
+            List<string> models = Brain.ReadCloudModels("kilo", catalog);
+            Cloud picked = new Cloud(Brain.KiloMark + "abc123", Brain.DefaultCloudModel("kilo", models));
+            fail("its models like OpenRouter's", models.Count == 3 && !models.Contains("music/maker") && picked.Model == "nvidia/nemotron-3.5-super-vl:free" && Brain.HasTools(picked) && new Brain().Sighted(picked)
+                && !Brain.HasTools(new Cloud(Brain.KiloMark + "abc123", "nobody/unlisted")));
+            List<string> heard = new List<string>();
+            TcpListener server = new TcpListener(IPAddress.Loopback, 0);
+            server.Start();
+            Thread serve = new Thread(delegate()
+            {
+                while (true)
+                {
+                    TcpClient client;
+                    try { client = server.AcceptTcpClient(); }
+                    catch (Exception) { return; }
+                    try
+                    {
+                        using (client)
+                        {
+                            NetworkStream stream = client.GetStream();
+                            List<byte> read = new List<byte>();
+                            byte[] chunk = new byte[8192];
+                            int end = -1, length = 0;
+                            while (end < 0)
+                            {
+                                int got = stream.Read(chunk, 0, chunk.Length);
+                                if (got <= 0) break;
+                                for (int i = 0; i < got; i++) read.Add(chunk[i]);
+                                for (int i = 3; i < read.Count && end < 0; i++) if (read[i - 3] == 13 && read[i - 2] == 10 && read[i - 1] == 13 && read[i] == 10) end = i + 1;
+                            }
+                            if (end < 0) continue;
+                            string head = Encoding.ASCII.GetString(read.ToArray(), 0, end);
+                            System.Text.RegularExpressions.Match sized = System.Text.RegularExpressions.Regex.Match(head, @"Content-Length:\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            if (sized.Success) length = int.Parse(sized.Groups[1].Value);
+                            while (read.Count - end < length)
+                            {
+                                int got = stream.Read(chunk, 0, chunk.Length);
+                                if (got <= 0) break;
+                                for (int i = 0; i < got; i++) read.Add(chunk[i]);
+                            }
+                            System.Text.RegularExpressions.Match bearer = System.Text.RegularExpressions.Regex.Match(head, @"Authorization:\s*Bearer (\S+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            string key = bearer.Success ? bearer.Groups[1].Value : "";
+                            lock (heard) heard.Add(head.Split(' ')[0] + " " + head.Split(' ')[1] + " " + key + " " + Encoding.UTF8.GetString(read.ToArray(), end, read.Count - end));
+                            bool good = key == "good-kilo";
+                            byte[] bytes = Encoding.UTF8.GetBytes(good ? "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"hi\"},\"finish_reason\":\"length\"}]}" : "{\"error\":{\"message\":\"Invalid token\"}}");
+                            byte[] top = Encoding.ASCII.GetBytes("HTTP/1.1 " + (good ? "200 OK" : "401 Unauthorized") + "\r\nContent-Type: application/json\r\nContent-Length: " + bytes.Length + "\r\nConnection: close\r\n\r\n");
+                            stream.Write(top, 0, top.Length);
+                            stream.Write(bytes, 0, bytes.Length);
+                        }
+                    }
+                    catch (Exception) { }
+                }
+            });
+            serve.IsBackground = true;
+            serve.Start();
+            string kiloWas = Brain.Kilo;
+            Brain.Kilo = "http://127.0.0.1:" + ((IPEndPoint)server.LocalEndpoint).Port;
+            string turned = null, taken = "ok";
+            try
+            {
+                try { Brain.CheckKilo(Brain.KiloMark + "bad-kilo"); }
+                catch (BrainException error) { turned = error.Message; }
+                try { Brain.CheckKilo(Brain.KiloMark + "good-kilo"); }
+                catch (BrainException error) { taken = error.Message; }
+            }
+            finally
+            {
+                Brain.Kilo = kiloWas;
+                server.Stop();
+            }
+            string last;
+            lock (heard) last = heard.Count == 0 ? "" : heard[heard.Count - 1];
+            fail("its key is checked", turned != null && turned.StartsWith("Kilo Code turned down that key", StringComparison.Ordinal) && taken == "ok"
+                && last.StartsWith("POST /chat/completions good-kilo ", StringComparison.Ordinal) && last.IndexOf("\"model\":\"kilo-auto/free\"", StringComparison.Ordinal) > 0 && last.IndexOf(Brain.KiloMark, StringComparison.Ordinal) < 0);
+            if (wrong.Count > 0) throw new Exception("Kilo Code keys went wrong: " + string.Join(", ", wrong) + " / " + turned + " / " + taken + " / " + last + " / " + string.Join(",", models.ToArray()));
+            checks.Add("PASS Kilo Code keys: Brain > Use a Kilo Code key marks the key (and a JWT in the usual box is taken too), it goes to Kilo's gateway as a bearer token without the mark, a one-token reply from kilo-auto/free checks it since the model list is open, a turned-down key is said plainly, and its models are picked like OpenRouter's");
         }
 
         private void ServeSpeech(NetworkStream stream)
