@@ -91,6 +91,7 @@ namespace CapriDesktop
         internal List<InkShape> DrawingShapes;
         [DataMember(Name = "command")] public string Command;
         [DataMember(Name = "folder")] public string Folder;
+        internal bool Spelled;
 
         internal ToolArguments Copy() { return (ToolArguments)MemberwiseClone(); }
     }
@@ -927,7 +928,7 @@ namespace CapriDesktop
         // Her settings Mac and Linux have.
         internal static bool CrossSetting(string name)
         {
-            return Array.IndexOf(new[] { "voice_in_mic", "mini_player", "hologram", "voice", "quiet", "check_ins", "wander", "dance_to_music", "always_on_top", "typing_sound", "glitch_in", "watch_my_screen", "startup", "discord_presence", "voice_layers", "size", "pop_ins", "sleep", "volume", "voice_speed", "replies", "bubble", "glance_gap", "voice_pitch", "voice_robot", "voice_glitch", "layer_1_pitch", "layer_1_delay", "layer_2_pitch", "layer_2_delay", "sounds", "language", "preview_voice" }, name) >= 0;
+            return Array.IndexOf(new[] { "live_reactions", "voice_in_mic", "mini_player", "hologram", "voice", "quiet", "check_ins", "wander", "dance_to_music", "always_on_top", "typing_sound", "glitch_in", "watch_my_screen", "startup", "discord_presence", "voice_layers", "size", "pop_ins", "sleep", "volume", "voice_speed", "replies", "bubble", "glance_gap", "voice_pitch", "voice_robot", "voice_glitch", "layer_1_pitch", "layer_1_delay", "layer_2_pitch", "layer_2_delay", "sounds", "language", "preview_voice" }, name) >= 0;
         }
 
         private static bool HasSetting(Kit kit, string name) { return kit == null || kit.Has("capri_settings:" + name); }
@@ -1647,8 +1648,9 @@ namespace CapriDesktop
         // The shortcuts Mac and Linux do another way. The rest need key presses, which only Windows has so far.
         private static readonly string[] MacPresses = { "screenshot", "task_manager" }, LinuxPresses = { "screenshot", "show_desktop", "task_manager" };
         // Her moves that only Windows has so far.
-        private static readonly string[] WindowsMoves = { "sit_on", "lie_down", "sit_up" };
-        private static readonly string[] WindowsTools = { "desktop_icons" };
+        private static readonly string[] WindowsMoves = { };
+        private static readonly string[] WindowsTools = { };
+        internal static bool IconsHere;
         // Her window tool's arranging, which only Windows has so far.
         private static readonly string[] WindowsArranging = { "maximize", "restore", "snap_left", "snap_right", "snap_top", "snap_bottom", "move_to_screen", "move", "resize", "pin_on_top", "unpin" };
 #endif
@@ -1674,8 +1676,10 @@ namespace CapriDesktop
             for (int i = 0; i < Shortcuts.GetLength(0); i++)
                 if (Array.IndexOf(OnMac ? MacPresses : LinuxPresses, Shortcuts[i, 0]) < 0) missing.Add(new[] { "shortcut:" + Shortcuts[i, 0], OnlyWindows });
             foreach (string move in WindowsMoves) missing.Add(new[] { "move_yourself:" + move, OnlyWindows });
+            if (OnMac) missing.Add(new[] { "move_yourself:sit_on", "Mac can't name its windows here yet" });
             foreach (string arrange in WindowsArranging) if (OnMac && arrange != "maximize" && !arrange.StartsWith("snap_", StringComparison.Ordinal)) missing.Add(new[] { "app_window:" + arrange, OnlyWindows });
             foreach (string tool in WindowsTools) missing.Add(new[] { tool, OnlyWindows });
+            if (!IconsHere) missing.Add(new[] { "desktop_icons", "not on this desktop" });
             foreach (string name in SettingNames()) if (!CrossSetting(name)) missing.Add(new[] { "capri_settings:" + name, OnlyWindows });
 
 #endif
@@ -2093,6 +2097,7 @@ namespace CapriDesktop
         internal static bool Wants(string said)
         {
             if (HologramOn.IsMatch(Asked(said)) || HologramOff.IsMatch(Asked(said))) return true;
+            if (Terminal.Wants(said)) return true;
             if (Ink.Request(Asked(said)) != null) return true;
             if (Files.PathIn(said) != null) return true;
             if (WatchRequest(Asked(said)) != null) return true;
@@ -2219,6 +2224,7 @@ namespace CapriDesktop
         internal static string Pulled(string result)
         {
             if ((result ?? "").StartsWith("Hologram mode ", StringComparison.Ordinal)) return result;
+            if ((result ?? "").StartsWith(Terminal.Plainly, StringComparison.Ordinal)) return result;
             if (result == Ink.Question || result == "Cleared my drawing." || result == "Drew on your screen." || result == "Added to my drawing.") return result;
             // What isn't here goes out as she said it, like her line that clones are Windows-only.
             if (Honest(result)) return result;
@@ -3021,6 +3027,8 @@ namespace CapriDesktop
             if (Planned(said, out tool, out args)) return true;
             tool = null;
             args = new ToolArguments();
+            string spelled = Terminal.Request(said);
+            if (spelled != null) { tool = "terminal"; args.Command = spelled; args.Spelled = true; return true; }
             string filePath = Files.PathIn(said);
             if (filePath != null) { tool = "read_file"; args.Path = filePath; return true; }
             if (Moon.IsMatch(said ?? "")) { tool = "play_music"; args.Song = MoonSong; args.Kind = "song"; return true; }

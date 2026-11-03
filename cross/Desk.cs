@@ -18,6 +18,8 @@ namespace CapriDesktop
         internal bool Seat;
         internal bool Solid;
         internal int Pid;
+        // Its app and title, where the desk says, for sitting on one by name.
+        internal string Name = "";
     }
 
     internal abstract class Desk
@@ -423,6 +425,17 @@ namespace CapriDesktop
 
         internal override string Name { get { return "X11"; } }
 
+        [DllImport(Library)] private static extern int XFetchName(IntPtr display, IntPtr window, out IntPtr name);
+
+        private string NameOf(IntPtr window)
+        {
+            IntPtr name;
+            if (XFetchName(display, window, out name) == 0 || name == IntPtr.Zero) return "";
+            string read = Marshal.PtrToStringUTF8(name);
+            XFree(name);
+            return read ?? "";
+        }
+
         [DllImport(Library)] private static extern int XGrabKey(IntPtr display, int key, uint modifiers, IntPtr window, bool ownerEvents, int pointerMode, int keyboardMode);
         [DllImport(Library)] private static extern int XKeysymToKeycode(IntPtr display, IntPtr keysym);
         [DllImport(Library)] private static extern int XNextEvent(IntPtr display, byte[] evt);
@@ -606,6 +619,7 @@ namespace CapriDesktop
             Spot found = Make(window.ToInt64(), new PixelRect(left, top, right - left, bottom - top), seat);
             long[] process = Property(window, "_NET_WM_PID");
             if (process != null && process.Length > 0) found.Pid = (int)process[0];
+            found.Name = NameOf(window);
             return found;
         }
     }
@@ -827,8 +841,11 @@ namespace CapriDesktop
             if (width <= 0 || height <= 0) return null;
             int full = client.TryGetProperty("fullscreen", out JsonElement screen) ? (screen.ValueKind == JsonValueKind.True ? 1 : screen.ValueKind == JsonValueKind.Number ? screen.GetInt32() : 0) : 0;
             long address = Address(client);
+            string called = (client.TryGetProperty("class", out JsonElement kind) ? kind.GetString() : "") + " " + (client.TryGetProperty("title", out JsonElement title) ? title.GetString() : "");
             lock (floating) { if (client.GetProperty("floating").GetBoolean()) floating.Add(address); else floating.Remove(address); }
-            return Make(address, new PixelRect(Px(at[0].GetDouble()), Px(at[1].GetDouble()), width, height), full == 0);
+            Spot made = Make(address, new PixelRect(Px(at[0].GetDouble()), Px(at[1].GetDouble()), width, height), full == 0);
+            made.Name = called;
+            return made;
         }
 
         // Hyprland tiles every new window, which would make her a tile, so each of hers floats and is pinned to every workspace.
@@ -1063,7 +1080,7 @@ namespace CapriDesktop
                 "    if (w.activities.length > 0 && w.activities.indexOf(workspace.currentActivity) < 0) continue;\n" +
                 "    var g = w.frameGeometry, area = workspace.clientArea(KWin.MaximizeArea, w);\n" +
                 "    var seat = !w.fullScreen && !(g.width >= area.width && g.height >= area.height);\n" +
-                "    out.push([w.internalId, w.pid, Math.round(g.x), Math.round(g.y), Math.round(g.width), Math.round(g.height), seat ? 1 : 0].join(','));\n" +
+                "    out.push([w.internalId, w.pid, Math.round(g.x), Math.round(g.y), Math.round(g.width), Math.round(g.height), seat ? 1 : 0, (String(w.resourceClass) + ' ' + String(w.caption)).replace(/[;,\\n]/g, ' ')].join(','));\n" +
                 "  }\n" +
                 "  var now = out.join(';');\n" +
                 "  if (now !== capriLast) { capriLast = now; print('" + tag + " ' + now); }\n" +
@@ -1099,14 +1116,15 @@ namespace CapriDesktop
             {
                 foreach (string entry in line.Substring(at + tag.Length + 1).Split(';', StringSplitOptions.RemoveEmptyEntries))
                 {
-                    string[] part = entry.Split(',');
+                    string[] part = entry.Split(',', 8);
                     int pid, x, y, wide, tall, seat;
-                    if (part.Length != 7 || !int.TryParse(part[1], out pid) || !int.TryParse(part[2], out x) || !int.TryParse(part[3], out y) || !int.TryParse(part[4], out wide) || !int.TryParse(part[5], out tall) || !int.TryParse(part[6], out seat)) continue;
+                    if (part.Length < 7 || !int.TryParse(part[1], out pid) || !int.TryParse(part[2], out x) || !int.TryParse(part[3], out y) || !int.TryParse(part[4], out wide) || !int.TryParse(part[5], out tall) || !int.TryParse(part[6], out seat)) continue;
                     if (pid == own || wide <= 0 || tall <= 0) continue;
                     long id;
                     if (!ids.TryGetValue(part[0], out id)) { id = ids.Count + 1; ids[part[0]] = id; names[id] = part[0]; }
                     Spot made = Make(id, new PixelRect(x, y, wide, tall), seat == 1);
                     made.Pid = pid;
+                    if (part.Length > 7) made.Name = part[7];
                     found.Insert(0, made);
                 }
                 latest = found;

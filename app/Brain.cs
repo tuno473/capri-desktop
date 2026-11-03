@@ -789,6 +789,23 @@ namespace CapriDesktop
             return 0;
         }
 
+        private static int ollamaWindow = 4096;
+
+        // Ollama cuts an ask longer than its window, and her tools alone can pass 4K. A rough three characters a token, the next
+        // size up, and it never shrinks in a run, since changing it makes Ollama load the model again.
+        internal static int OllamaWindow(List<ChatMessage> messages, string tools, int reply)
+        {
+            long characters = (tools ?? "").Length;
+            foreach (ChatMessage message in messages) if (message != null && message.Content != null) characters += message.Content.Length;
+            long need = characters / 3 + Math.Min(reply, 2048);
+            foreach (int size in new[] { 4096, 8192, 12288, AutoMost })
+                if (size >= need || size == AutoMost)
+                {
+                    lock (headerKeys) { if (size > ollamaWindow) ollamaWindow = size; return ollamaWindow; }
+                }
+            return ollamaWindow;
+        }
+
         internal static string TooLong(int window) { return "That was too long for my brain's " + window / 1024 + "K memory. Pick a bigger Memory size " + BrainMenu + "."; }
 
         internal static int ReplyLimit(int automatic, bool job = false)
@@ -2736,6 +2753,7 @@ namespace CapriDesktop
             }
             string thinking = Ollama + "|" + model;
             ChatRequest asking = new ChatRequest { Model = model, Messages = messages.ToArray(), Think = false, Options = new ChatOptions { Limit = ReplyLimit(thinker == thinking ? limit + 2048 : limit, job || routing), Context = Window, Gpu = ollamaCpu == model ? (int?)0 : null } };
+            asking.Options.Context = OllamaWindow(messages, listed, asking.Options.Limit);
             ChatReply chat = Send<ChatReply>(Ollama + "/api/chat", asking, 180000, listed, null, null, ticket);
             if (chat.Error != null) throw new BrainException(chat.Error);
             if (thinker != thinking && ReplyLimit(limit + 2048, job || routing) > asking.Options.Limit && chat.Stopped == "length" && chat.Message != null && (!string.IsNullOrEmpty(chat.Message.Thinking) || (chat.Message.Content ?? "").IndexOf("<think>", StringComparison.OrdinalIgnoreCase) >= 0))

@@ -1613,12 +1613,15 @@ On Mac and Linux, her error log is errors.txt in ~/.config/Capri.
 
 ### On this fork
 - Her terminal: ask her to run something, or let her reach for a command when it's the way to do what you asked. It uses your own shell: fish or bash on Linux, zsh on a Mac, PowerShell on Windows. Commands that only read run straight away. Anything that changes things she asks about first, showing the exact command, unless you've picked Blackwall in Security. A few that could wreck the computer, like wiping a disk, she refuses every time. It has no keyboard, so nothing that waits for typing, like sudo's password. Keys in what it prints are hidden from her brain. By hand on Mac and Linux: Capri --run [--shell fish] [--yes] "command".
+- Sitting on a window you name or the taskbar, lying down and sitting up, and Gaming Mode's small panel with live reactions.
 - Hologram, her fake blue screen, throwing her, riding your cursor, walking when asked, Stop talking, job control, each app's volume, how busy your computer is and your internet check work here too.
 - Maximizing, snapping, moving, resizing and pinning windows on KDE, X11 and Hyprland (through wmctrl for XWayland windows), and maximizing and snapping on a Mac.
 - Her voice in your mic on Linux: Settings or "put your voice in my mic" makes a Capri_Mic to pick in Discord or a game, with your mic and her voice on it. It's removed when you turn it off or close her.
 
 ### Not yet
-- Desktop icon chaos, her live reactions and her game HUD, sitting on a window by name and lying down.
+- Shuffling desktop icons: a Mac and GNOME can only hide them, and Plasma has no switch for it, so she says so there.
+- Her game panel and live reactions here go by the picture: flashes, the dark, red, new scenes. Windows also reads kills and health bars game by game.
+- Sitting on a window by name on a Mac.
 - Voice chat is here on this fork: the pill's mic button or Ctrl + Alt + V. It downloads her ears once (about 490 MB), everything stays on your computer, and "stop listening" ends it. Linux records through parecord, pw-record or arecord; Mac asks once for the microphone. Mainframe's VOICE section has Listen for Hey Capri, which keeps the mic open but decodes only near sound on this computer, and a Mic row on Linux. The ElevenLabs live call is still Windows-only.
 - Her free voice (a 316 MB download) with no server: Mainframe > VOICE > Provider > Free voice. English only, like on Windows.
 - Her own brain with no Ollama: right-click her > Brain > Her own brain. It downloads llama.cpp and a model that fits your memory, and starts with her from then on.

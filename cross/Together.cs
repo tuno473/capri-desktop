@@ -221,7 +221,7 @@ namespace CapriDesktop
             }
         }
 
-        // Gaming Mode here: she goes to a corner, watches the game now and then and reacts. Windows also has her game HUD.
+        // Gaming Mode here: she goes to a corner with a small panel over the game, watches it and reacts.
         internal string GamingTool(string action)
         {
             if (action == "off")
@@ -229,6 +229,7 @@ namespace CapriDesktop
                 if (!gamingMode) return "Gaming Mode's already off.";
                 gamingMode = false;
                 watchTurn++;
+                CloseGamePanel();
                 return "Gaming Mode's off, choom.";
             }
             if (action == "on" || string.IsNullOrEmpty(action))
@@ -238,12 +239,15 @@ namespace CapriDesktop
                 if (blind != null) return blind;
                 gamingMode = true;
                 int turn = ++watchTurn;
+                OpenGamePanel();
                 if (Program.Smoke == null)
                 {
                     PixelRect area = Area;
                     Teleport(new PixelPoint(area.Right - (int)(Bounds.Width * RenderScaling / 2) - 8, area.Bottom - 8));
                     Thread looking = new Thread(delegate() { GamingLoop(turn); }) { IsBackground = true, Name = "Capri gaming mode" };
                     looking.Start();
+                    Thread reacting = new Thread(delegate() { MomentsLoop(turn); }) { IsBackground = true, Name = "Capri live reactions" };
+                    reacting.Start();
                 }
                 return "Gaming Mode's on. I'll watch from the corner and keep it short.";
             }

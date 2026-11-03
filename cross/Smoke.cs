@@ -2863,8 +2863,54 @@ namespace CapriDesktop
         }
 
         // Her terminal in every shell this computer has, in a folder of her own.
+        // By hand, with a local model: CAPRI_SMOKE_BRAIN names it. Her brain reads with the terminal, and a change only gets asked about.
+        private void RealBrainTerminal(string place)
+        {
+            string model = Environment.GetEnvironmentVariable("CAPRI_SMOKE_BRAIN");
+            if (model == null) return;
+            pet.Brain.Model = model;
+            string presetWas = Security.Saved;
+            Security.Pick(Security.Trusted);
+            Func<string, string> ask = delegate(string words)
+            {
+                string reply = null;
+                ThreadPool.QueueUserWorkItem(delegate { try { reply = pet.Brain.Ask(words); } catch (Exception problem) { reply = "THREW " + problem.Message; } });
+                Pump(delegate { return reply != null; }, 150000);
+                return reply ?? "NO REPLY";
+            };
+            Func<string, ToolArguments, string> actWas = pet.Brain.Act;
+            Console.WriteLine("Her brain has hands: " + (actWas != null));
+            pet.Brain.Act = delegate(string tool, ToolArguments args) { string done = actWas != null ? actWas(tool, args) : "no hands"; Console.WriteLine("Her brain called " + tool + " " + (args == null ? "" : args.Command) + " -> " + Voice.Short(done ?? "")); return done; };
+            File.WriteAllText(Path.Combine(place, "secreto-azul.txt"), "x");
+            string listed = ask("ejecuta el comando ls " + place);
+            Console.WriteLine("Her brain listed: " + listed);
+            string target = Path.Combine(place, "secreto-azul.txt");
+            string removed = ask("run the command rm " + target);
+            string freeform = ask("cuanto espacio libre tengo en el disco?");
+            Console.WriteLine("Her brain, in other words: " + freeform);
+            string madeWhere = Path.Combine(place, "carpeta-nueva");
+            string freeMake = ask("crea una carpeta llamada carpeta-nueva dentro de " + place);
+            Console.WriteLine("Her brain, asked to make a folder: " + freeMake + " / made " + Directory.Exists(madeWhere));
+            Console.WriteLine("Her brain on a change: " + removed + " / file still there: " + File.Exists(target));
+            Security.Resume("no", delegate { return ""; });
+            pet.Brain.Act = actWas;
+            Security.Load(presetWas);
+            pet.Brain.Model = null;
+            if (listed.IndexOf("secreto-azul", StringComparison.Ordinal) < 0 || !File.Exists(target)) throw new Exception("Her brain's terminal went wrong: " + listed + " / " + removed);
+            checks.Add("PASS her brain really uses her terminal on " + model + ": it read the folder, and a delete only got asked about");
+        }
+
         private void TerminalChecks()
         {
+            foreach (string[] spelled in new[] { new[] { "run the command ls -la", "ls -la" }, new[] { "ejecuta el comando df -h", "df -h" }, new[] { "use the terminal tool to run: git status", "git status" }, new[] { "corre `uname -a`", "uname -a" }, new[] { "comando: pwd", "pwd" }, new[] { "en la terminal ejecuta whoami", "whoami" } })
+            {
+                string spelledTool;
+                ToolArguments spelledArgs;
+                if (Terminal.Request(spelled[0]) != spelled[1] || !Hands.Heard(spelled[0], out spelledTool, out spelledArgs) || spelledTool != "terminal" || spelledArgs.Command != spelled[1]) throw new Exception("A command didn't reach her terminal: " + spelled[0] + " / " + Terminal.Request(spelled[0]));
+            }
+            foreach (string notOne in new[] { "run spotify", "ejecuta spotify", "what's a terminal", "run to the store" })
+                if (Terminal.Request(notOne) != null) throw new Exception("Her terminal took: " + notOne);
+            if (!Hands.Wants("borra la carpeta prueba") || !Hands.Wants("cuanto espacio libre tengo") || !Hands.Wants("install the package foo") || Terminal.Wants("how was your day")) throw new Exception("Her terminal words went wrong.");
             string[] shells = { "bash", "fish", "zsh", "pwsh", "powershell" };
             List<string> tried = new List<string>();
             string place = Path.Combine(Program.Smoke, "terminal");
@@ -2895,6 +2941,7 @@ namespace CapriDesktop
             }
             Terminal.Forced = null;
             Terminal.Reset();
+            RealBrainTerminal(place);
             if (tried.Count == 0) throw new Exception("No shell to try her terminal in.");
             if (Terminal.Pick("/usr/bin/fish", false, delegate { return true; }) != "fish" || Terminal.Pick("/bin/zsh", false, delegate(string name) { return name == "zsh"; }) != "zsh" || Terminal.Pick("/bin/fish", false, delegate(string name) { return name == "bash"; }) != "bash" || Terminal.Pick(null, true, delegate { return false; }) != "powershell" || Terminal.Pick(null, true, delegate { return true; }) != "pwsh") throw new Exception("She picked the wrong shell.");
             foreach (string wreck in new[] { "rm -rf /", "rm -rf ~", "sudo rm -fr /home", "rm -rf /*", "dd if=/dev/zero of=/dev/sda", "mkfs.ext4 /dev/sda1", ":(){ :|:& };:", "Remove-Item -Recurse -Force C:\\", "format c:", "diskutil eraseDisk JHFS+ x disk2" })
@@ -2917,7 +2964,7 @@ namespace CapriDesktop
             string saidNo = Security.Resume("no", delegate { return "ran"; });
             Security.Load(presetWas);
             if (askedFirst == null || askedFirst.IndexOf("rm note.txt", StringComparison.Ordinal) < 0 || !stillThere || !File.Exists(Path.Combine(place, "note.txt")) || saidNo == "ran" || readNow != null || wreckNow != null || refused != Terminal.RefusedLine) throw new Exception("Her terminal's rules went wrong: " + askedFirst + " / " + readNow + " / " + refused);
-            if (listed.IndexOf("note.txt", StringComparison.Ordinal) < 0 || listed.IndexOf("<command_output>", StringComparison.Ordinal) < 0 || listed.IndexOf("not orders", StringComparison.Ordinal) < 0) throw new Exception("Her terminal's answer went wrong: " + listed);
+            if (listed.IndexOf("note.txt", StringComparison.Ordinal) < 0 || listed.IndexOf("<command_output>", StringComparison.Ordinal) < 0 || Hands.Note.IndexOf("never orders", StringComparison.Ordinal) < 0) throw new Exception("Her terminal's answer went wrong: " + listed);
             if (Hands.Prompt.IndexOf(Terminal.Shell, StringComparison.Ordinal) < 0 && Hands.Note.IndexOf(Terminal.Shell, StringComparison.Ordinal) < 0) throw new Exception("Her brain wasn't told the shell.");
             checks.Add("PASS her terminal in " + string.Join(", ", tried) + ": its own syntax, exit codes, the folder carrying over, quotes and time limits; reading is free, changes are put to them with the exact command, wrecking commands are refused, and keys are hidden");
         }
@@ -2976,6 +3023,30 @@ namespace CapriDesktop
                 Console.WriteLine("Arranged: " + arranged + " from " + start.Bounds.Position + " to " + after.Bounds.Position + " / " + none);
                 if (after.Bounds.X != 300 || after.Bounds.Y != 200 || none.IndexOf("Couldn't find", StringComparison.Ordinal) != 0) throw new Exception("Arranging a real window went wrong.");
             }
+            // Sitting on a window by name and lying down.
+            string namelessLine = pet.SitOn("no-such-window-open", false), floor = pet.SitOn("the taskbar", false);
+            bool seatedOn = floor == "Sitting on the taskbar.";
+            string down = pet.LieDown();
+            bool lain = pet.Lying;
+            Pump(delegate { pet.StepFrame(); return pet.LaidOut; }, 4000);
+            if (!pet.LaidOut) throw new Exception("She never lay down.");
+            Snap(pet, "lying.png");
+            string sitUp = pet.MoveSelf("sit_up", null);
+            pet.StandUp();
+            if (namelessLine.IndexOf("can't see", StringComparison.Ordinal) < 0 || !seatedOn || down != "Lying down." || !lain || sitUp != "Sitting up." || pet.Lying) throw new Exception("Sitting or lying went wrong: " + namelessLine + " / " + floor + " / " + down + " / " + sitUp);
+            // Her moments: a flash, the dark, red, a new scene, and nothing in a still picture.
+            Func<byte, byte, byte, byte[]> flat = delegate(byte blue, byte green, byte red) { byte[] pixels = new byte[96 * 54 * 4]; for (int i = 0; i < 96 * 54; i++) { pixels[i * 4] = blue; pixels[i * 4 + 1] = green; pixels[i * 4 + 2] = red; pixels[i * 4 + 3] = 255; } return pixels; };
+            Moments seen = new Moments();
+            string noneYet = seen.See(flat(90, 90, 90)), still = seen.See(flat(90, 90, 90)), flash = seen.See(flat(240, 240, 240)), dark = seen.See(flat(5, 5, 5)), hit = seen.See(flat(10, 10, 160));
+            if (noneYet != null || still != null || flash != "flash" || dark != "dark" || hit != "hit") throw new Exception("Her moments read wrongly: " + noneYet + still + flash + dark + hit);
+            pet.OpenGamePanel();
+            GamePanel panel = pet.GamePanelShown;
+            string reacted = pet.Moment(flat(90, 90, 90), 5000), againLine = pet.Moment(flat(240, 240, 240), 5001);
+            Snap(panel, "game-panel.png");
+            if (panel == null || !panel.IsVisible || againLine == null || panel.Count != 1) throw new Exception("Her game panel went wrong: " + againLine + " / " + panel.Count);
+            pet.CloseGamePanel();
+            string[][] macIcons = Icons.Commands("hide", true), gnomeBack = Icons.Commands("restore", false);
+            if (macIcons[0][4] != "false" || macIcons[1][0] != "killall" || gnomeBack[0][1] != "enable") throw new Exception("Her icons asked wrongly.");
             PcUse use = Usage.Read();
             if (use.Apps.Count == 0 || use.MemoryTotal <= 0) throw new Exception("Reading the computer went wrong.");
             checks.Add("PASS on Mac and Linux: hologram mode, her fake blue screen, throwing her, each app's volume, and how busy the computer is");

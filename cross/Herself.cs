@@ -10,6 +10,41 @@ using Avalonia.Threading;
 
 namespace CapriDesktop
 {
+    // Hiding their desktop icons and bringing them back, where the desktop has a switch for it: Finder on a Mac, GNOME's desktop
+    // icons extension. Plasma has none, and she never moves or renames their real files to fake one.
+    internal static class Icons
+    {
+        private const string Ding = "ding@rastersoft.com";
+
+        internal static bool Here
+        {
+            get
+            {
+                if (OperatingSystem.IsMacOS()) return true;
+                return (Environment.GetEnvironmentVariable("XDG_CURRENT_DESKTOP") ?? "").IndexOf("GNOME", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+        }
+
+        internal static string[][] Commands(string action, bool mac)
+        {
+            bool hide = action != "restore";
+            if (mac) return new[] { new[] { "defaults", "write", "com.apple.finder", "CreateDesktop", hide ? "false" : "true" }, new[] { "killall", "Finder" } };
+            return new[] { new[] { "gnome-extensions", hide ? "disable" : "enable", Ding } };
+        }
+
+        internal static string Do(string action)
+        {
+            if (!Here) return Hands.NoIcons;
+            foreach (string[] command in Commands(action, OperatingSystem.IsMacOS()))
+            {
+                string[] rest = new string[command.Length - 1];
+                Array.Copy(command, 1, rest, 0, rest.Length);
+                if (Music.Run(command[0], rest) == null) return "Couldn't change your desktop icons just now.";
+            }
+            return action == "restore" ? "Your desktop icons are back." : action == "mess" ? "I can't shuffle them here, so I hid them. Say put them back and they return." : "Hid your desktop icons. Nothing happened to the files.";
+        }
+    }
+
     // Her fake blue screen: five seconds, then it owns up. It touches nothing, and a click or Esc ends it.
     internal sealed class FakeCrash : Window
     {
@@ -104,6 +139,50 @@ namespace CapriDesktop
             return "Pick Capri_Mic as your mic in Discord or your game, and you'll both be on it.";
         }
 
+        internal bool Lying { get { return lying; } }
+        internal bool LaidOut { get { return clip == laydown; } }
+        internal void StepFrame() { Advance(Now); }
+
+        // Sitting on a window they name, or the bottom of the screen for the taskbar. Mac can't tell its windows apart by name yet.
+        internal string SitOn(string wanted, bool lie)
+        {
+            string name = System.Text.RegularExpressions.Regex.Replace((wanted ?? "").Trim(), @"^(?:the|my|your|ur|our|that|this) | (?:window|app|application|game|tab)$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (name.Length == 0) return "Which window, choom?";
+            Ledge target = null;
+            string shown;
+            if (Hands.TaskbarWords.IsMatch(name))
+            {
+                PixelRect area = Area;
+                target = new Ledge { Floor = true, Left = area.X, Right = area.Right, Y = area.Bottom };
+                shown = "the taskbar";
+            }
+            else
+            {
+                string called = char.ToUpperInvariant(name[0]) + name.Substring(1);
+                shown = "your " + called + " window";
+                Spot found = Windows().Find(delegate(Spot spot) { return spot.Seat && spot.Name.IndexOf(name, StringComparison.OrdinalIgnoreCase) >= 0; });
+                if (found == null) return "I can't see " + called + " open, or it's full screen or minimized.";
+                if (found.Bounds.Y <= WorkAt(found.Bounds.Position).Y + 40) return "There's no room for me on top of " + shown + ": it's too close to the top of the screen.";
+                target = new Ledge { Window = found.Window, Bounds = found.Bounds, Left = found.Bounds.X, Right = found.Bounds.Right, Y = found.Bounds.Y };
+            }
+            walking = false;
+            falling = false;
+            fallTo = null;
+            hanging = false;
+            Move(new PixelPoint((target.Left + target.Right) / 2, Position.Y));
+            Land(target);
+            lying = lie;
+            return (lie ? "Lying down on " : "Sitting on ") + shown + ".";
+        }
+
+        internal string LieDown()
+        {
+            if (lying) return "Already lying down.";
+            if (seat == null) SitHere();
+            lying = true;
+            return "Lying down.";
+        }
+
         // Riding their cursor: she keeps to the mouse until they say hop off or drag her.
         internal string RideTool(bool on)
         {
@@ -125,6 +204,8 @@ namespace CapriDesktop
 
         private void SetUpHerself()
         {
+            Hands.IconsHere = Icons.Here;
+            Hands.Icons = delegate(string action) { return Icons.Do(action); };
             Hands.Arranged = delegate(OpenWindow window, string wanted, ToolArguments args)
             {
                 PixelRect area = Dispatcher.UIThread.Invoke(delegate { return Area; });

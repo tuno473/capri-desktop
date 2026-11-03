@@ -38,6 +38,7 @@ namespace CapriDesktop
         [DataMember] internal bool NoDiscord;
         [DataMember] internal bool NoUpsetChaos;
         [DataMember] internal bool HeyCapri;
+        [DataMember] internal bool NoLiveReactions;
         [DataMember] internal bool VoiceInMic;
         [DataMember] internal bool OwnBrain;
         [DataMember] internal bool NoMiniPlayer;
@@ -221,6 +222,9 @@ namespace CapriDesktop
         private readonly Clip perchGlitch = new Clip("perch_glitch", 10, 15, 1, PerchShiftX, PerchShiftY);
         private readonly Clip mouth = new Clip("mouth", 5, 12, 1.11);
         private readonly Clip walk = new Clip("walk", 12, 12, 1.11);
+        private const double LieScale = 0.85;
+        private readonly Clip laydown = new Clip("laydown", 60, 30, 250.0 / 384 * LieScale, -0.05, (SitY - 0.5) * (1 - LieScale) + 94.0 / 384 * LieScale);
+        private bool lying;
         private readonly Clip dance = new Clip("dance", 16, 16, 1.11);
         private readonly Clip perchDance = new Clip("perch_music", 60, 30, 1, PerchShiftX, PerchShiftY);
         private readonly Clip arrive = new Clip("arrive", 14, 15, 1.11);
@@ -800,6 +804,7 @@ namespace CapriDesktop
             if (!tunesHidden) CheckTunes(now);
             CheckThrown(now);
             CheckRide();
+            CheckGamePanel(now);
             if (Program.Smoke == null && now >= nextUpdate) { nextUpdate = now + 6 * 3600; CheckUpdate(); }
             if (UpdateNews != null && !away && !dragging && Talk.Quiet) { Talk.Answer("(update)", UpdateNews); UpdateNews = null; }
             if (outro != null && now >= outroAt) { Action next = outro; outro = null; next(); }
@@ -1057,8 +1062,10 @@ namespace CapriDesktop
 
         private void Advance(double now)
         {
-            bool seated = clip == perch || clip == perchGlitch || clip == perchDance || clip == perchArrive || clip == perchLeave;
+            bool seated = clip == laydown || clip == perch || clip == perchGlitch || clip == perchDance || clip == perchArrive || clip == perchLeave;
             bool perched = seat != null;
+            if (!perched) lying = false;
+            if (lying && clip == perch) Play(laydown);
             if (perched && !seated && !walking) Play(perch);
             if ((!perched && seated) || (clip == dangle && !dragging && !falling && !hanging)) Play(idle);
             int index = (int)((now - clipStart) * clip.Fps);
@@ -2182,6 +2189,15 @@ namespace CapriDesktop
         internal string MoveSelf(string action, string screen)
         {
             if (action == "move_mainframe") return MoveFrame(screen);
+            if (action == "sit_on") return SitOn(screen, false);
+            if (action == "lie_down") return string.IsNullOrWhiteSpace(screen) ? LieDown() : SitOn(screen, true);
+            if (action == "sit_up")
+            {
+                if (!lying) return "I'm not lying down.";
+                lying = false;
+                Play(perch);
+                return "Sitting up.";
+            }
             if (action == "ride_cursor") return RideTool(true);
             if (action == "hop_off") return RideTool(false);
             if (action == "walk_around" || action == "wander") { nextWander = 0; return "Going for a walk."; }
@@ -2401,6 +2417,7 @@ namespace CapriDesktop
             {
                 case "voice": SetSpeak(on); break;
                 case "voice_in_mic": SetVoiceInMic(on); break;
+                case "live_reactions": Saved.NoLiveReactions = !on; Save(); break;
                 case "mini_player": if (on == Saved.NoMiniPlayer) ToggleMiniPlayer(); break;
                 case "hologram": SetHologram(on); break;
                 case "quiet": ToggleShush(false); break;
