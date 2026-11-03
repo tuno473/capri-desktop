@@ -8,7 +8,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <DefineConstants>$(DefineConstants);CROSS</DefineConstants>
     <NoWarn>$(NoWarn);CS0649;CS0169;CS0414;CA1416;SYSLIB0014</NoWarn>
-    <Version>0.7.9.1</Version>
+    <Version>0.8.1.1</Version>
     <Product>Capri</Product>
     <ApplicationIcon>../assets/chip.ico</ApplicationIcon>
     <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
@@ -30,6 +30,8 @@
     <Compile Include="../app/ChessBoard.cs" Link="Shared/ChessBoard.cs" />
     <Compile Include="../app/Minis.cs" Link="Shared/Minis.cs" />
     <Compile Include="../app/WatchAlong.cs" Link="Shared/WatchAlong.cs" />
+    <Compile Include="../app/Network.cs" Link="Shared/Network.cs" />
+    <Compile Include="../app/Terminal.cs" Link="Shared/Terminal.cs" />
     <Compile Include="../app/Hands.cs" Link="Shared/Hands.cs" />
     <Compile Include="../app/Ink.cs" Link="Shared/Ink.cs" />
     <Compile Include="../app/Presence.cs" Link="Shared/Presence.cs" />

@@ -17,6 +17,38 @@ namespace CapriDesktop
         internal static string Smoke;
         internal static int[] Shelf;
 
+        // Her command line by hand, the same one her brain uses, with the same rules:
+        //   Capri --run [--shell fish|bash|zsh|pwsh] [--folder path] [--seconds n] [--yes] command...
+        // What only reads runs; what changes things needs --yes; what could wreck the computer never runs.
+        private static int RunCommand(string[] args)
+        {
+            ToolArguments call = new ToolArguments();
+            bool yes = false;
+            int at = 1;
+            for (; at < args.Length; at++)
+            {
+                if (args[at] == "--yes") yes = true;
+                else if (args[at] == "--shell" && at + 1 < args.Length) Terminal.Forced = args[++at];
+                else if (args[at] == "--folder" && at + 1 < args.Length) call.Folder = args[++at];
+                else if (args[at] == "--seconds" && at + 1 < args.Length) call.Seconds = args[++at];
+                else break;
+            }
+            call.Command = at < args.Length ? string.Join(" ", args, at, args.Length - at) : null;
+            if (string.IsNullOrWhiteSpace(call.Command))
+            {
+                Console.Error.WriteLine("Usage: Capri --run [--shell fish|bash|zsh|pwsh] [--folder path] [--seconds n] [--yes] command");
+                Console.WriteLine("Shell here: " + Terminal.Shell);
+                return 2;
+            }
+            if (Terminal.Refused(call.Command)) { Console.Error.WriteLine(Terminal.RefusedLine); return 3; }
+            if (!yes && !Terminal.ReadOnly(call.Command)) { Console.Error.WriteLine("That changes things, so add --yes to run it: " + call.Command); return 4; }
+            int seconds;
+            if (call.Seconds == null || !int.TryParse(call.Seconds, out seconds)) seconds = Terminal.DefaultSeconds;
+            TerminalRun run = Terminal.Run(call.Command, call.Folder, seconds);
+            Console.Write(run.Output);
+            return run.TimedOut ? 124 : run.Exit;
+        }
+
         [STAThread]
         private static int Main(string[] args)
         {
@@ -25,6 +57,7 @@ namespace CapriDesktop
                 Shelf = new[] { int.Parse(args[1]), int.Parse(args[2]), int.Parse(args[3]), int.Parse(args[4]) };
                 return AppBuilder.Configure<ShelfApp>().UsePlatformDetect().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
             }
+            if (args.Length >= 1 && args[0] == "--run") return RunCommand(args);
             if (args.Length >= 2 && args[0] == "--smoke") Smoke = Path.GetFullPath(args[1]);
             return AppBuilder.Configure<CapriApp>().UsePlatformDetect().With(new MacOSPlatformOptions { ShowInDock = false }).StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
         }

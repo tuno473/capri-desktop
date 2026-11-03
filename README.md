@@ -14,7 +14,7 @@ She sits on your windows, talks back, plays your games and gets into everything.
 <a href="https://github.com/tuno473/capri-desktop/releases"><img src="https://img.shields.io/github/downloads/lachydotmcg/capri-desktop/total?color=05d9e8&style=flat-square" alt="Downloads"></a>
 <a href="https://discord.gg/F4fDHfGtFk"><img src="https://img.shields.io/badge/Discord-join%20us-5865F2?logo=discord&logoColor=white&style=flat-square" alt="Discord"></a>
 
-[Setup guide](https://lachydotmcg.github.io/capri-desktop/setup/) · [Website](https://lachydotmcg.github.io/capri-desktop/) · [Help](https://lachydotmcg.github.io/capri-desktop/help/) · [Support](#support)
+[Setup guide](https://capriai.app/setup/) · [Website](https://capriai.app/) · [Help](https://capriai.app/help/) · [Support](#support)
 
 <sub>Inspired by jpartnma_'s TikTok video.</sub>
 
@@ -85,7 +85,7 @@ Beware that Capri may try to take over your human CPU. We take no responsibility
 
 **Zero telemetry.** The app sends us nothing. [SECURITY.md](SECURITY.md) lists what she connects to, what the website counts, and what to do if Windows or your antivirus warns you.
 
-Stuck? The [setup guide](https://lachydotmcg.github.io/capri-desktop/setup/) walks through it, or ask in the [Discord](https://discord.gg/F4fDHfGtFk). [Windows or your antivirus may warn you](SECURITY.md#windows-or-your-antivirus-warned-me) because she's a new app. All the code is here.
+Stuck? The [setup guide](https://capriai.app/setup/) walks through it, or ask in the [Discord](https://discord.gg/F4fDHfGtFk). [Windows or your antivirus may warn you](SECURITY.md#windows-or-your-antivirus-warned-me) because she's a new app. All the code is here.
 
 <details>
 <summary><b>What your PC needs</b></summary>
@@ -154,7 +154,7 @@ Just ask her for things, like "open Spotify", "play Blinding Lights", "pause", "
 | **CUSTOM LOCAL** | A voice model you run: a Piper, Kokoro, Kitten or Pocket TTS file, or your own Kokoro-FastAPI, Fish Speech or Qwen3-TTS server |
 | **CLOUD VOICE** | Fish Audio (free tier), ElevenLabs or OpenAI, with your own key |
 
-For a Capri-style voice in Fish Audio or ElevenLabs, paste the [voice prompt from the setup guide](https://lachydotmcg.github.io/capri-desktop/setup/#voice) into their Voice Design.
+For a Capri-style voice in Fish Audio or ElevenLabs, paste the [voice prompt from the setup guide](https://capriai.app/setup/#voice) into their Voice Design.
 
 > [!IMPORTANT]
 > Our project-provided synthetic voice is in Capri's Mainframe and runs on your PC. You may connect third-party text-to-speech services, but we don't provide guides for voice cloning tools. Our only voice-design help is a text prompt for making a synthetic voice.
@@ -179,7 +179,7 @@ Until it's installed she writes her replies, or on Windows uses her free voice. 
 
 ## Make her yours
 
-Pick what she calls you, her language, her voice and what she does on your PC from the Capri Mainframe. Who she is stays the same for everyone, and since 0.7.6 there's no `personality.md` to rewrite.
+Pick what she calls you, her language, her voice and what she does on your PC from the Capri Mainframe. To change who she is and how she talks, rewrite `personality.md`: Settings > YOU > Her personality > Edit personality.md. It starts as her default, and Reset to her default puts her back.
 
 - **Her safety rules are part of who she is.** They're fixed in her code, in `Safety` in [app/Brain.cs](app/Brain.cs), right after her personality. If you build on her, please keep them as they are, out of respect for Capri's character
 - Her personality is `DefaultPersonality` in [app/Brain.cs](app/Brain.cs), so a pull request can suggest a change for everyone
@@ -197,6 +197,7 @@ Pick what she calls you, her language, her voice and what she does on your PC fr
 - [x] Check in on me (on by default): every so often she glitches in on whatever you're doing
 - [x] With Check in on me on, she asks for your attention now and then when you ignore her
 - [x] Her personality and safety rules fixed in her code, the same Capri for everyone (0.7.6)
+- [x] `personality.md` is back, and her safety rules stay in her code right after it (0.8.0)
 - [ ] A charm meter: how fond of you she is, growing as you spend time with her
 - [ ] Mischief mode: screen glitches, stealing your cursor, "you've been hacked" notes
 
@@ -205,7 +206,7 @@ Pick what she calls you, her language, her voice and what she does on your PC fr
 - [x] Typing to her, with replies in her speech bubble
 - [x] A brain on your PC that sets itself up, or Ollama if you have it
 - [x] A free NVIDIA key, or your own Gemini, OpenRouter, ChatGPT, Claude or DeepSeek key
-- [x] Three brain tiers: NORMAL, HIGHER and MAX INTELLIGENCE
+- [x] Three brain tiers: NORMAL, MEDIUM INTELLIGENCE (free) and MAX INTELLIGENCE
 - [x] Remembering things about you, in her notes (me.md)
 - [x] Keeping your chat for up to a week
 - [x] Remembering past chats and what she saw on your screen, and bringing up old moments herself (0.7.6)
@@ -327,4 +328,4 @@ Free for anything non-commercial: use her, share her, change her. No selling her
 
 Have fun and more updates to come!
 
-<sub>Window perch and music perch animations: her artist, who prefers to stay private. Setup guide based on Dancer's guide in the Discord. Font: Share Tech Mono (OFL). Free voice: Kokoro-82M (Apache-2.0). Her own ears: [NVIDIA Parakeet TDT 0.6B v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) for English and [v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) for 25 European languages ([CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)), int8 exports by sherpa-onnx. Both run with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0). HD voice: [Qwen3-TTS 1.7B](https://github.com/QwenLM/Qwen3-TTS) (Apache-2.0), run with [qwentts.cpp](https://github.com/ServeurpersoCom/qwentts.cpp) (MIT).</sub>
+<sub>Window perch and music perch animations: her artist, who prefers to stay private. Setup guide based on Dancer's guide in the Discord. Font: Share Tech Mono (OFL). Free voice: Kokoro-82M (Apache-2.0). Her own ears: [NVIDIA Parakeet TDT 0.6B v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) for English and [v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) for 25 European languages ([CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)), int8 exports by sherpa-onnx. Both run with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0). HD voice: [Qwen3-TTS 1.7B](https://github.com/QwenLM/Qwen3-TTS) (Apache-2.0), run with [qwentts.cpp](https://github.com/ServeurpersoCom/qwentts.cpp) (MIT). Her voice in your mic: [VB-CABLE](https://vb-cable.com) by VB-Audio, donationware, carried unchanged and installed only by its own setup.</sub>

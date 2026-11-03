@@ -162,7 +162,6 @@ namespace CapriDesktop
             Hands.WatchAlong = delegate(string action) { return Dispatcher.UIThread.Invoke(delegate { return Together(action); }); };
             Hands.GamingMode = delegate(string action) { return Dispatcher.UIThread.Invoke(delegate { return GamingTool(action); }); };
             Hands.SaveClip = ClipTool;
-            Hands.GameOpen = delegate { return Dispatcher.UIThread.Invoke(delegate { return GameUp ? "game" : null; }); };
         }
 
         // Watch along: every 20 seconds she looks and listens, and says something only when a moment is worth it.

@@ -307,6 +307,27 @@ namespace CapriDesktop
         [System.Runtime.InteropServices.DllImport("/usr/lib/libobjc.A.dylib")] private static extern IntPtr sel_registerName(string name);
         [System.Runtime.InteropServices.DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")] private static extern void Send(IntPtr target, IntPtr selector, bool value);
 
+        // Her windows take clicks again.
+        internal static void ClickBack(Window window)
+        {
+            try
+            {
+                IPlatformHandle handle = window.TryGetPlatformHandle();
+                if (handle == null) return;
+                if (OperatingSystem.IsMacOS()) { Send(handle.Handle, sel_registerName("setIgnoresMouseEvents:"), false); return; }
+                if (!OperatingSystem.IsLinux()) return;
+                IntPtr display = XOpenDisplay(IntPtr.Zero);
+                if (display == IntPtr.Zero) return;
+                // ShapeInput back to the whole window: a set of no shape at all.
+                XShapeCombineMask(display, handle.Handle, 2, 0, 0, IntPtr.Zero, 0);
+                XFlush(display);
+                XCloseDisplay(display);
+            }
+            catch (Exception) { }
+        }
+
+        [System.Runtime.InteropServices.DllImport("libXext.so.6")] private static extern void XShapeCombineMask(IntPtr display, IntPtr window, int kind, int x, int y, IntPtr mask, int operation);
+
         // Every click falls through to whatever's under it: an empty input shape on X11 and XWayland, and Cocoa's own switch on Mac.
         internal static void ClickThrough(Window window)
         {
