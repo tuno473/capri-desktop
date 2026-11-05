@@ -13,7 +13,7 @@ namespace CapriDesktop
     // Capri Mainframe on Mac and Linux: Windows' panel in Windows' colours and bands, holding what these systems have. It's
     // another face on the same settings as her right-click menu, so every row calls what the menu calls and nothing here
     // keeps a setting of its own. Anything Windows-only, like voice chat, Gaming Mode or clips, isn't shown here at all.
-    internal sealed class Frame : Window
+    internal sealed class ForkFrame : Window
     {
         internal static readonly Color Ground = Color.FromRgb(10, 10, 16);
         internal static readonly Color Band = Color.FromRgb(16, 12, 20);
@@ -56,7 +56,7 @@ namespace CapriDesktop
             });
         };
 
-        internal Frame(Pet pet)
+        internal ForkFrame(Pet pet)
         {
             this.pet = pet;
             Title = "Capri Mainframe";

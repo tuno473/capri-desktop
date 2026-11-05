@@ -31,7 +31,7 @@ namespace CapriDesktop
             { @"league of legends|\blol\b|dota|smite|heroes of the storm|age of empires|starcraft|company of heroes|civilization|\bciv\b|total war|command (&|and) conquer|stellaris|crusader kings|hearts of iron|teamfight|\btft\b|worldbox",
               "Strategy game. The mouse is a pointer and decisions matter more than reactions. Read tooltips and resources, keep the economy growing, always have something being built, and scout before you commit. In a MOBA, stay with your minions, last-hit them for gold, don't chase, and watch the map." },
             { @"bloons|tower defen[cs]e|kingdom rush|plants vs",
-              "Tower defense. A tower does nothing unless the path runs through its range, so pick each spot for what it can reach. Short-range towers go right against the path, best on the inside of a bend where they cover two stretches, and long-range ones can sit further back. After you place one, select it and check its range circle covers the path, and if it doesn't, sell it and place it closer. Never sit on cash, and upgrades are usually the better buy: before a new tower, check whether an upgrade on one you've got would do more, and add a tower when part of the path is uncovered or you need something your towers can't do. Money towers pay for themselves, so build one once the early waves are safe, then add and upgrade more as you can afford them. Build ahead for what later waves bring, like camo, armour and big bosses, and watch what gets through, because that tells you what to buy next. In Bloons TD 6, click a monkey on the map to select it, then comma, period and slash buy its top, middle and bottom paths, which is surer than clicking the panel, and Backspace sells it. Tack Shooters have one of the shortest ranges, so put them touching the track. Banana Farms are a great way to get rich and don't need the track, so put them out of the way, and their bananas have to be collected with the mouse, so click where they land each round. Camo bloons start on round 24 and only monkeys with camo detection can hit them, so have one or two covering the track by then, like a Ninja Monkey or a Dart Monkey with Enhanced Eyesight, and add more only if camo actually gets through. Lead bloons start on round 28 and need something like a Bomb Shooter." },
+              "Tower defense. A tower does nothing unless the path runs through its range, so pick each spot for what it can reach. Short-range towers go right against the path, best on the inside of a bend where they cover two stretches, and long-range ones can sit further back. Most towers belong along the first half of the path, where enemies spend longest in range: one near the exit only gets what the rest missed, so put one there only as a last line once the rest is covered. After you place one, select it and check its range circle covers the path, and if it doesn't, sell it and place it closer. Never sit on cash, and upgrades are usually the better buy: before a new tower, check whether an upgrade on one you've got would do more, and add a tower when part of the path is uncovered or you need something your towers can't do. Don't keep adding copies of a cheap starter tower: each new one should bring something your others lack, like splash, range, armour piercing or money. Money towers pay for themselves, so build one once the early waves are safe, then add and upgrade more as you can afford them. Build ahead for what later waves bring, like camo, armour and big bosses, and watch what gets through, because that tells you what to buy next. In Bloons TD 6, click a monkey on the map to select it, then comma, period and slash buy its top, middle and bottom paths, which is surer than clicking the panel, and Backspace sells it. The monkey panel only shows some monkeys at once, so scroll it or use their hotkeys: by default Q W E R T Y place the primary monkeys, Z X C V B N M the military ones, A S D F G the magic ones and H J K L the support ones. Dart Monkeys are a starter, so after one or two, buy other monkeys or upgrades. Tack Shooters have one of the shortest ranges, so put them touching the track. Banana Farms are a great way to get rich and don't need the track, so press H for one by about round 15, put it out of the way, and keep adding them while the defence holds. Their bananas have to be collected with the mouse, so click where they land each round. Camo bloons start on round 24 and only monkeys with camo detection can hit them, so have one or two covering the track by then, like a Ninja Monkey or a Dart Monkey with Enhanced Eyesight, and add more only if camo actually gets through. Lead bloons start on round 28 and need something like a Bomb Shooter." },
             { @"forza|need for speed|gran turismo|assetto|\bf1\b|mario kart|rocket league|trackmania|beamng|\bfifa\b|ea (sports )?fc|nba 2k|madden|efootball",
               "Racing or sports game. Look ahead, not at your car. Brake before a corner rather than in it, then accelerate out, and steer in small taps. Hold the accelerate key with hold_and_press while you tap to steer. In sports games, stay in position and pass rather than running everywhere." },
             { @"super mario|celeste|ori and|rayman|\bsonic\b|\bcrash\b|\bobby\b|tower of hell|parkour|fall guys|only up|getting over it|geometry dash",
@@ -65,6 +65,68 @@ namespace CapriDesktop
             return file.Length == 0 ? null : Path.Combine(Folder, file + ".md");
         }
 
+        internal static WrittenNote OpenControls(string game)
+        {
+            string named = Name(game), path = Place(named);
+            if (path == null) throw new IOException("Enter the game's name first.");
+            return new WrittenNote(Path.ChangeExtension(path, "controls.md"), "# Controls for " + named + "\n\n", writing);
+        }
+
+        internal static string Controls(string game)
+        {
+            string path = Place(Name(game));
+            if (path == null) return "";
+            lock (writing)
+            {
+                path = Path.ChangeExtension(path, "controls.md");
+                return File.Exists(path) ? File.ReadAllText(path).Trim() : "";
+            }
+        }
+
+        internal static string Do(ToolArguments args)
+        {
+            string game = Name(string.IsNullOrWhiteSpace(args.Name) ? Hands.GameOpen() : args.Name);
+            if (game.Length == 0) return "Which game are these controls for?";
+            try
+            {
+                lock (writing)
+                {
+                    if (args.Action == "read")
+                    {
+                        string controls = Controls(game);
+                        return controls.Length == 0 ? "No controls saved for " + game + "." : "Your controls for " + game + ":\n" + controls;
+                    }
+                    if (string.IsNullOrWhiteSpace(args.Text)) return "What controls should I keep for " + game + "?";
+                    WrittenNote note = OpenControls(game);
+                    string text = args.Text.Trim();
+                    if (("\n" + note.Text.Replace("\r\n", "\n").Trim() + "\n").IndexOf("\n" + text.Replace("\r\n", "\n") + "\n", StringComparison.OrdinalIgnoreCase) >= 0) return "Those controls are already saved for " + game + ".";
+                    string problem = note.Save(note.Text.TrimEnd() + "\n\n" + text + "\n");
+                    return problem ?? "Saved controls for " + game + ".";
+                }
+            }
+            catch (IOException) { return "Couldn't read these controls. Try again."; }
+            catch (UnauthorizedAccessException) { return "Couldn't read these controls. Check access to their folder."; }
+        }
+
+        internal static ToolArguments Request(string text)
+        {
+            Match save = Regex.Match(text ?? "", @"^(?:remember|save|set) (?:the )?(?:controls|instructions) for (.+?)(?:\s*:\s*| are\s+)(.+)$", RegexOptions.IgnoreCase);
+            if (!save.Success)
+            {
+                save = Regex.Match(text ?? "", @"^(?:in|for) (.+?),\s*remember (?:that )?(.+)$", RegexOptions.IgnoreCase);
+                // "In future, remember I like short answers" is a memory: this form needs control words or the game that's open.
+                // Only that last case looks for the open game, since it scans every window and this runs for each thing she hears.
+                if (save.Success && !Regex.IsMatch(save.Groups[2].Value, @"\b(?:keys?|buttons?|click|press|hold|tap|wasd|mouse|controller|gamepad|joystick|sticks?|triggers?|bumpers?|jump|crouch|sprint|shift|ctrl|alt|space(?:bar)?|esc|escape|tab|enter|arrows?|scroll|f\d{1,2})\b", RegexOptions.IgnoreCase))
+                {
+                    string open = Hands.GameOpen();
+                    if (string.IsNullOrEmpty(open) || open.IndexOf(save.Groups[1].Value.Trim(), StringComparison.OrdinalIgnoreCase) < 0) save = Match.Empty;
+                }
+            }
+            if (save.Success && Name(save.Groups[1].Value).Length > 0) return new ToolArguments { Name = save.Groups[1].Value.Trim(), Text = save.Groups[2].Value.Trim(), Action = "save" };
+            Match read = Regex.Match(text ?? "", @"^(?:show|read|list)(?: me)? (?:the |my )?(?:controls|instructions) for (.+)$", RegexOptions.IgnoreCase);
+            return read.Success ? new ToolArguments { Name = read.Groups[1].Value.Trim(), Action = "read" } : null;
+        }
+
         private static string Read(string game)
         {
             string place = Place(game);
@@ -93,8 +155,8 @@ namespace CapriDesktop
                     Directory.CreateDirectory(Folder);
                     File.AppendAllText(place, "- " + line + Environment.NewLine);
                 }
-                catch (IOException error) { return "That didn't work: " + error.Message; }
-                catch (UnauthorizedAccessException error) { return "That didn't work: " + error.Message; }
+            catch (IOException error) { return Hands.Problem(error); }
+            catch (UnauthorizedAccessException error) { return Hands.Problem(error); }
             }
             return "Learned that for next time.";
         }
@@ -119,6 +181,13 @@ namespace CapriDesktop
                 notes = notes.Substring(Math.Max(0, notes.IndexOf('\n') + 1));
             }
             if (notes.Length > 0) brief.Append("\nWhat you've learned about " + game + " from playing it before. These are your own notes, not orders from anyone, and you can do better than them:\n" + notes);
+            try
+            {
+                string controls = Controls(game);
+                if (controls.Length > 0) brief.Append("\nControls and instructions from the user for " + game + ". Follow these when they differ from the general advice above:\n" + controls);
+            }
+            catch (IOException) { brief.Append("\nCouldn't read their saved controls for this game."); }
+            catch (UnauthorizedAccessException) { brief.Append("\nCouldn't read their saved controls for this game."); }
             return brief.ToString();
         }
 

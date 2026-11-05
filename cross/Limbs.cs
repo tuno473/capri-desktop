@@ -26,17 +26,21 @@ namespace CapriDesktop
         {
             ThreadPool.QueueUserWorkItem(delegate
             {
-                string path = Path.Combine(Path.GetTempPath(), "capri-sound-" + Guid.NewGuid().ToString("N") + ".wav");
+                string path = null;
+                // A temp folder without write access used to end her on the sound worker.
                 try
                 {
+                    path = Path.Combine(Path.GetTempPath(), "capri-sound-" + Guid.NewGuid().ToString("N") + ".wav");
                     File.WriteAllBytes(path, Voice.Wave(samples, Sfx.Rate));
                     Music.Run(Player(), new[] { path });
                 }
-                catch (IOException) { }
+                catch (IOException error) { Brain.Log("sound", -1, error.Message); }
+                catch (UnauthorizedAccessException error) { Brain.Log("sound", -1, error.Message); }
                 finally
                 {
-                    try { File.Delete(path); }
-                    catch (IOException) { }
+                    try { if (path != null) File.Delete(path); }
+                    catch (IOException error) { Brain.Log("sound", -1, error.Message); }
+                    catch (UnauthorizedAccessException error) { Brain.Log("sound", -1, error.Message); }
                 }
             });
         }
@@ -56,9 +60,10 @@ namespace CapriDesktop
             int turn = Interlocked.Increment(ref speeches);
             ThreadPool.QueueUserWorkItem(delegate
             {
-                string path = Path.Combine(Path.GetTempPath(), "capri-voice-" + Guid.NewGuid().ToString("N") + ".wav");
+                string path = null;
                 try
                 {
+                    path = Path.Combine(Path.GetTempPath(), "capri-voice-" + Guid.NewGuid().ToString("N") + ".wav");
                     File.WriteAllBytes(path, wav);
                     if (Mic != null && Mic.On) { string copy = path + ".mic.wav"; File.Copy(path, copy, true); ThreadPool.QueueUserWorkItem(delegate { try { Mic.Say(copy); } finally { try { File.Delete(copy); } catch (IOException) { } } }); }
                     ProcessStartInfo start = new ProcessStartInfo(Player()) { UseShellExecute = false, CreateNoWindow = true };
@@ -72,11 +77,13 @@ namespace CapriDesktop
                         if (speaker == process) speaker = null;
                     }
                 }
-                catch (Exception) { }
+                catch (Exception error) { Brain.Log("voice", -1, error.Message); }
                 finally
                 {
-                    try { File.Delete(path); }
-                    catch (IOException) { }
+                    // Losing access to a voice file during playback must not end her in cleanup.
+                    try { if (path != null) File.Delete(path); }
+                    catch (IOException error) { Brain.Log("voice", -1, error.Message); }
+                    catch (UnauthorizedAccessException error) { Brain.Log("voice", -1, error.Message); }
                 }
             });
         }
@@ -282,6 +289,16 @@ namespace CapriDesktop
                 return total > 0;
             }
             catch (Exception) { return false; }
+        }
+
+        // The copy to start again: an AppImage runs from a temporary mount, so the file they keep is the one that lasts.
+        internal static string SelfPath()
+        {
+            string image = Environment.GetEnvironmentVariable("APPIMAGE");
+            string dir = Environment.GetEnvironmentVariable("APPDIR");
+            string self = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(image) || string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(self) || !self.StartsWith(dir.TrimEnd('/') + "/", StringComparison.Ordinal)) return self;
+            return image;
         }
 
         // Start at login: a LaunchAgent on Mac, an XDG autostart entry on Linux. Either one starts this copy of Capri.

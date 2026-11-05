@@ -96,13 +96,13 @@ namespace CapriDesktop
 
         internal static void Trigger(string kind, byte[] frameBefore, byte[] frameAfter) { Trigger(kind, null, frameBefore, frameAfter); }
 
-        // A moment her game watching noticed, or the game's own log told her about (F67): her live reactions get it first, with a
-        // quick line right away, then her brain gets its look. While they're on, her brain's line has to land as fast as a
-        // reaction does, and it goes up in the feed even while she can't talk.
+        // A moment her game watching noticed, or the game's own log told her about (F67): her live reactions get it first, with her
+        // brain's quick line, then her brain gets its look at the pictures. While they're on, the look's line has to land as fast
+        // as a reaction does, and it goes up in the feed even while she can't talk.
         internal static bool Moment(string kind, string detail, byte[] frameBefore, byte[] frameAfter)
         {
             bool live = Reactions.KindOf(kind) != null && Reactions.Running;
-            if (live) Reactions.React(kind);
+            if (live) Reactions.React(kind, detail);
             return Trigger(kind, detail, frameBefore, frameAfter, live);
         }
 
@@ -527,7 +527,8 @@ namespace CapriDesktop
             if (front == null || front.Window == IntPtr.Zero) return null;
             Job running = job;
             bool fills = FullScreen() && !Native.Titled(front.Window) && !Regex.IsMatch((front.Program ?? "") + " " + (front.Title ?? ""), @"\b(chrome|firefox|msedge|edge|brave|opera|vivaldi|arc|vlc|mpv|netflix|youtube|twitch|plex|powerpnt)\b", RegexOptions.IgnoreCase);
-            if (!(running != null && running.Playing) && !Computer.WatchWindow(front, fills)) return null;
+            GameSeen known = gaming.Game;
+            if (!(running != null && running.Playing) && !(GamingOn && known != null && known.Window == front.Window) && !Computer.WatchWindow(front, fills)) return null;
             string title = (front.Title ?? "").Trim();
             if (title.Length == 0) title = front.Program ?? "a game";
             return title.Length > 60 ? title.Substring(0, 60).TrimEnd() : title;

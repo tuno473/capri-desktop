@@ -218,7 +218,6 @@ namespace CapriDesktop
             Hands.StopSpeech = delegate { Dispatcher.UIThread.Post(delegate { voice.Stop(); voiceDoneAt = 0; }); return "Stopped talking."; };
             Hands.JobControl = JobTool;
             Hands.Quit = delegate { DispatcherTimer.RunOnce(delegate { Quit(); }, TimeSpan.FromSeconds(3)); return "Quitting once I've said this."; };
-            Hands.Mainframe = delegate { Dispatcher.UIThread.Post(delegate { if (Program.Smoke == null) ShowFrame(); }); return "Mainframe's open."; };
             Hands.Updates = delegate(ToolArguments args) { return Dispatcher.UIThread.Invoke(delegate { return UpdatesTool(args.Action); }); };
             Hands.MiniPlayer = delegate(string action) { return Dispatcher.UIThread.Invoke(delegate { return MiniPlayerTool(action); }); };
             Hands.OpenClip = delegate(string action)
